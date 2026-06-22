@@ -370,6 +370,67 @@
     .score-section { flex-direction: column; text-align: center; }
     .input-row { flex-direction: column; }
   }
+
+  /* 本日のメディア別ニュース */
+  .daily-section { margin: 2.5rem 0; }
+  .daily-section-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .daily-section-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .daily-section-date { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .media-tabs {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .media-tab {
+    flex-shrink: 0;
+    font-size: 12px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 99px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .media-tab.active { background: var(--color-text-primary); color: #fff; border-color: var(--color-text-primary); }
+
+  .news-list { list-style: none; }
+  .news-item {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1rem;
+    margin-bottom: 8px;
+  }
+  .news-score {
+    flex-shrink: 0;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    color: #fff;
+  }
+  .news-body { min-width: 0; flex: 1; }
+  .news-title {
+    font-size: 14px; font-weight: 500;
+    margin-bottom: 3px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    display: block;
+  }
+  .news-title:hover { text-decoration: underline; }
+  .news-excerpt { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 3px; }
+  .news-comment { font-size: 12px; color: var(--color-text-secondary); }
+
+  .daily-loading, .daily-error, .daily-empty {
+    text-align: center; padding: 2rem; font-size: 13px; color: var(--color-text-tertiary);
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  }
+  .daily-error { display: none; }
 </style>
 </head>
 <body>
@@ -476,6 +537,23 @@
     AIによる分析は補助的なものであり、完全性・正確性を保証するものではありません。<br>
     最終的な判断はご自身の確認と責任のもとで行ってください。
   </div>
+
+  <div class="daily-section">
+    <div class="daily-section-header">
+      <div class="daily-section-title"><i class="ti ti-news"></i> 本日のメディア別ニュース</div>
+      <div class="daily-section-date" id="daily-date"></div>
+    </div>
+
+    <div class="media-tabs" id="media-tabs"></div>
+
+    <div class="daily-loading" id="daily-loading">
+      <div class="loading-spinner" style="margin:0 auto 10px;"></div>
+      本日のニュースを読み込んでいます...
+    </div>
+    <div class="daily-error" id="daily-error"></div>
+    <ul class="news-list" id="news-list"></ul>
+  </div>
+
   </div>
 
   <div class="static-page" id="page-howto">
@@ -545,6 +623,99 @@ function showPage(page) {
   document.getElementById('page-disclaimer').style.display = (page === 'disclaimer') ? 'block' : 'none';
   window.scrollTo(0, 0);
 }
+
+// ===== 本日のメディア別ニュース =====
+let dailyNewsData = null;
+let activeMediaId = null;
+
+function scoreColor(score) {
+  if (score >= 70) return '#3B6D11';
+  if (score >= 45) return '#BA7517';
+  return '#A32D2D';
+}
+
+async function loadDailyNews() {
+  const loadingEl = document.getElementById('daily-loading');
+  const errorEl = document.getElementById('daily-error');
+  loadingEl.style.display = 'block';
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/daily-news');
+    const json = await res.json();
+
+    loadingEl.style.display = 'none';
+
+    if (!res.ok) {
+      errorEl.textContent = json.error || '本日のニュースを取得できませんでした。';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    dailyNewsData = json;
+    renderMediaTabs();
+    if (json.media && json.media.length > 0) {
+      activeMediaId = json.media[0].mediaId;
+      renderNewsList(activeMediaId);
+    }
+
+    const dateEl = document.getElementById('daily-date');
+    if (json.date) dateEl.textContent = json.date + ' 更新';
+
+  } catch (e) {
+    loadingEl.style.display = 'none';
+    errorEl.textContent = '通信エラーが発生しました。';
+    errorEl.style.display = 'block';
+  }
+}
+
+function renderMediaTabs() {
+  const tabsEl = document.getElementById('media-tabs');
+  tabsEl.innerHTML = '';
+  (dailyNewsData.media || []).forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'media-tab' + (m.mediaId === activeMediaId ? ' active' : '');
+    btn.textContent = m.mediaName;
+    btn.onclick = () => {
+      activeMediaId = m.mediaId;
+      renderMediaTabs();
+      renderNewsList(activeMediaId);
+    };
+    tabsEl.appendChild(btn);
+  });
+}
+
+function renderNewsList(mediaId) {
+  const listEl = document.getElementById('news-list');
+  listEl.innerHTML = '';
+
+  const media = (dailyNewsData.media || []).find(m => m.mediaId === mediaId);
+  if (!media || !media.articles || media.articles.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'daily-empty';
+    empty.textContent = '本日はこのメディアの記事を取得できませんでした。';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  media.articles.forEach(a => {
+    const li = document.createElement('li');
+    li.className = 'news-item';
+    const score = Math.min(100, Math.max(0, a.score || 0));
+    li.innerHTML = `
+      <div class="news-score" style="background:${scoreColor(score)}">${score}</div>
+      <div class="news-body">
+        <a class="news-title" href="${a.url}" target="_blank" rel="noopener noreferrer">${a.title || '(タイトル不明)'}</a>
+        <div class="news-excerpt">${a.excerpt || ''}</div>
+        <div class="news-comment">${a.comment || ''}</div>
+      </div>
+    `;
+    listEl.appendChild(li);
+  });
+}
+
+// ページ読み込み時に本日のニュースを取得
+loadDailyNews();
 
 function fillExample(url) {
   document.getElementById('url-input').value = url;
