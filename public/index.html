@@ -810,20 +810,20 @@ const TIMELINE_THEMES = [
   },
 ];
 
-// 期間ラベルを生成する関数
+// 期間ラベルを生成する関数（sortKeyで確実な数値ソートを実現）
 function generatePeriods(theme) {
   const periods = [];
   const now = new Date();
 
   if (theme.granularity === "year") {
     for (let y = theme.startYear; y <= now.getFullYear(); y++) {
-      periods.push({ label: `${y}年`, year: y });
+      periods.push({ label: `${y}年`, year: y, sortKey: y * 10000 });
     }
   } else if (theme.granularity === "month") {
     let y = theme.startYear;
     let m = theme.startMonth || 1;
     while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
-      periods.push({ label: `${y}年${m}月`, year: y, month: m });
+      periods.push({ label: `${y}年${m}月`, year: y, month: m, sortKey: y * 10000 + m * 100 });
       m++;
       if (m > 12) { m = 1; y++; }
     }
@@ -831,12 +831,19 @@ function generatePeriods(theme) {
     let y = theme.startYear;
     let q = theme.startQuarter || 1;
     while (y < now.getFullYear() || (y === now.getFullYear() && q <= Math.ceil((now.getMonth() + 1) / 3))) {
-      periods.push({ label: `${y}年Q${q}`, year: y, quarter: q });
+      periods.push({ label: `${y}年Q${q}`, year: y, quarter: q, sortKey: y * 10000 + q * 100 });
       q++;
       if (q > 4) { q = 1; y++; }
     }
   }
   return periods;
+}
+
+// ラベル文字列からsortKeyを逆引きする関数
+function getSortKeyForLabel(label, theme) {
+  const periods = generatePeriods(theme);
+  const found = periods.find(p => p.label === label);
+  return found ? found.sortKey : 0;
 }
 
 let activeTheme = null;
@@ -947,16 +954,20 @@ async function startBackfill() {
       if (res.ok) {
         const json = await res.json();
         if (json.entry) {
-          const currentThemeId = activeTheme.id; // 現在のテーマを明示的に記録
+          const currentThemeId = activeTheme.id;
+          const currentTheme = activeTheme;
           if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
           // 同じ期間のデータが既にあれば上書き、なければ追加
           const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+          // sortKeyを付与してから保存
+          const entry = { ...json.entry, sortKey: getSortKeyForLabel(json.entry.date, currentTheme) };
           if (existingIdx >= 0) {
-            timelineData[currentThemeId][existingIdx] = json.entry;
+            timelineData[currentThemeId][existingIdx] = entry;
           } else {
-            timelineData[currentThemeId].push(json.entry);
+            timelineData[currentThemeId].push(entry);
           }
-          timelineData[currentThemeId].sort((a, b) => a.date.localeCompare(b.date));
+          // sortKeyで数値ソート（日本語文字列ソートより確実）
+          timelineData[currentThemeId].sort((a, b) => (a.sortKey || 0) - (b.sortKey || 0));
           renderTimelineCards(currentThemeId);
         }
       }
@@ -1007,14 +1018,16 @@ async function updateTimeline() {
     const json = await res.json();
     if (json.entry) {
       const currentThemeId = activeTheme.id;
+      const currentTheme = activeTheme;
       if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
       const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+      const entry = { ...json.entry, sortKey: getSortKeyForLabel(json.entry.date, currentTheme) || 99999999 };
       if (existingIdx >= 0) {
-        timelineData[currentThemeId][existingIdx] = json.entry;
+        timelineData[currentThemeId][existingIdx] = entry;
       } else {
-        timelineData[currentThemeId].push(json.entry);
+        timelineData[currentThemeId].push(entry);
       }
-      timelineData[currentThemeId].sort((a, b) => a.date.localeCompare(b.date));
+      timelineData[currentThemeId].sort((a, b) => (a.sortKey || 0) - (b.sortKey || 0));
       renderTimelineCards(currentThemeId);
     }
   } catch(e) {
