@@ -434,6 +434,86 @@
   }
   .daily-error { display: none; }
 
+  /* 深層分析 */
+  .deep-analysis-section { margin-top: 1rem; }
+  .btn-deep {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px; font-weight: 500;
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-deep:hover { border-color: var(--color-text-tertiary); color: var(--color-text-primary); }
+  .btn-deep:disabled { opacity: 0.5; cursor: not-allowed; }
+  .deep-result { display: none; margin-top: 1rem; }
+  .deep-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .deep-card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bias-item {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+  }
+  .bias-item:last-child { border-bottom: none; }
+  .bias-severity {
+    flex-shrink: 0;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 99px;
+  }
+  .severity-high { background: var(--color-danger-bg); color: var(--color-danger-text); }
+  .severity-medium { background: var(--color-warning-bg); color: var(--color-warning-text); }
+  .severity-low { background: var(--color-success-bg); color: var(--color-success-text); }
+  .bias-name { font-weight: 600; margin-bottom: 2px; }
+  .bias-desc { color: var(--color-text-secondary); }
+  .fact-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .fact-box {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .fact-box-label { font-weight: 600; margin-bottom: 4px; color: var(--color-text-secondary); }
+  .intent-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-bottom: 10px;
+  }
+  .intent-box {
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .intent-box-label { font-weight: 600; color: var(--color-info-text); margin-bottom: 4px; }
+  .tip-item {
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: 13px; padding: 6px 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+  .tip-item:last-child { border-bottom: none; }
+  .tip-icon { flex-shrink: 0; color: var(--color-info-text); }
+
   /* 時系列マップ */
   .timeline-themes { margin-bottom: 1.5rem; }
   .theme-grid {
@@ -664,6 +744,45 @@
         <span class="tag tag-info" id="media-type">—</span>
       </div>
       <p class="media-card-note" id="media-note"></p>
+    </div>
+
+    <div class="deep-analysis-section">
+      <button class="btn-deep" id="btn-deep" onclick="runDeepAnalysis()">
+        <i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）
+      </button>
+      <div class="deep-result" id="deep-result">
+
+        <div class="deep-card" id="deep-biases-card">
+          <div class="deep-card-title"><i class="ti ti-brain"></i> 心理的バイアスの検出</div>
+          <div id="deep-biases-list"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-list-check"></i> 事実と意見の分離</div>
+          <div class="fact-grid" id="deep-fact-grid"></div>
+        </div>
+
+        <div class="deep-card" id="deep-manipulation-card">
+          <div class="deep-card-title"><i class="ti ti-alert-triangle"></i> 感情操作・意図的な表現</div>
+          <div id="deep-manipulation-content"></div>
+        </div>
+
+        <div class="deep-card" id="deep-perspectives-card">
+          <div class="deep-card-title"><i class="ti ti-arrows-exchange"></i> 欠けている視点・反対意見</div>
+          <div id="deep-perspectives-content"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-target"></i> 執筆者の意図分析</div>
+          <div class="intent-grid" id="deep-intent-grid"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-bulb"></i> メディアリテラシーのポイント</div>
+          <div id="deep-tips-list"></div>
+        </div>
+
+      </div>
     </div>
   </div>
 
@@ -1294,6 +1413,13 @@ async function runCheck() {
 }
 
 function renderResult(d, url) {
+  // 深層分析のリセット
+  currentAnalysisUrl = url;
+  const btnDeep = document.getElementById('btn-deep');
+  btnDeep.style.display = 'flex';
+  btnDeep.disabled = false;
+  btnDeep.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+  document.getElementById('deep-result').style.display = 'none';
   // 記事プレビュー
   document.getElementById('preview-site').textContent = d.article_site || 'この記事';
   document.getElementById('preview-title').textContent = d.article_title || '(タイトルを取得できませんでした)';
@@ -1353,6 +1479,113 @@ function renderResult(d, url) {
 document.getElementById('url-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') runCheck();
 });
+
+// ===== 深層分析 =====
+let currentAnalysisUrl = '';
+
+async function runDeepAnalysis() {
+  if (!currentAnalysisUrl) return;
+  const btn = document.getElementById('btn-deep');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;margin:0;"></div> 心理学的観点から分析中...';
+
+  try {
+    const res = await fetch('/api/deep-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: currentAnalysisUrl })
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+      alert(json.error || '分析に失敗しました');
+      return;
+    }
+
+    renderDeepAnalysis(json);
+    btn.style.display = 'none';
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+    alert('通信エラーが発生しました');
+  }
+}
+
+function renderDeepAnalysis(d) {
+  // 心理的バイアス
+  const biasesList = document.getElementById('deep-biases-list');
+  biasesList.innerHTML = '';
+  (d.psychological_biases || []).forEach(b => {
+    const severityClass = b.severity === 'high' ? 'severity-high' : b.severity === 'medium' ? 'severity-medium' : 'severity-low';
+    const severityLabel = b.severity === 'high' ? '高' : b.severity === 'medium' ? '中' : '低';
+    const div = document.createElement('div');
+    div.className = 'bias-item';
+    div.innerHTML = `
+      <div>
+        <div class="bias-name">${b.name} <span class="bias-severity ${severityClass}">${severityLabel}</span></div>
+        <div class="bias-desc">${b.description}</div>
+      </div>`;
+    biasesList.appendChild(div);
+  });
+
+  // 事実と意見の分離
+  const factGrid = document.getElementById('deep-fact-grid');
+  const fo = d.fact_opinion_separation || {};
+  factGrid.innerHTML = `
+    <div class="fact-box"><div class="fact-box-label">✅ 事実</div>${fo.facts || '—'}</div>
+    <div class="fact-box"><div class="fact-box-label">💬 意見・主張</div>${fo.opinions || '—'}</div>
+    <div class="fact-box"><div class="fact-box-label">❓ 検証困難</div>${fo.unverifiable || '—'}</div>
+  `;
+
+  // 感情操作
+  const em = d.emotional_manipulation || {};
+  const manipContent = document.getElementById('deep-manipulation-content');
+  if (em.detected) {
+    manipContent.innerHTML = `
+      <div style="margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;">
+        ${(em.techniques || []).map(t => `<span class="tag tag-warning">${t}</span>`).join('')}
+      </div>
+      <div style="font-size:13px; color:var(--color-text-secondary);">${em.examples || ''}</div>`;
+  } else {
+    manipContent.innerHTML = '<div style="font-size:13px; color:var(--color-text-secondary);">感情操作的な表現は検出されませんでした</div>';
+  }
+
+  // 欠けている視点
+  const mp = d.missing_perspectives || {};
+  const perspContent = document.getElementById('deep-perspectives-content');
+  if (mp.exists) {
+    perspContent.innerHTML = `
+      <div style="font-size:13px; margin-bottom:8px; color:var(--color-text-secondary);">${mp.description || ''}</div>
+      <div style="font-size:13px; background:var(--color-bg); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:10px;">
+        <strong>反対意見・別の見方：</strong>${mp.counterargument || ''}
+      </div>`;
+  } else {
+    perspContent.innerHTML = '<div style="font-size:13px; color:var(--color-text-secondary);">反対意見への言及があり、バランスが取れています</div>';
+  }
+
+  // 執筆者の意図
+  const intent = d.author_intent || {};
+  document.getElementById('deep-intent-grid').innerHTML = `
+    <div class="intent-box"><div class="intent-box-label">主な意図</div>${intent.primary_goal || '—'}</div>
+    <div class="intent-box"><div class="intent-box-label">喚起する感情</div>${intent.target_emotion || '—'}</div>
+    <div class="intent-box"><div class="intent-box-label">期待する行動</div>${intent.call_to_action || '—'}</div>
+  `;
+
+  // メディアリテラシーのポイント
+  const tipsList = document.getElementById('deep-tips-list');
+  tipsList.innerHTML = '';
+  (d.literacy_tips || []).forEach(tip => {
+    const div = document.createElement('div');
+    div.className = 'tip-item';
+    div.innerHTML = `<i class="ti ti-point-filled tip-icon"></i><span>${tip}</span>`;
+    tipsList.appendChild(div);
+  });
+
+  document.getElementById('deep-result').style.display = 'block';
+}
 </script>
 
 </body>
