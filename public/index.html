@@ -848,6 +848,7 @@ function getSortKeyForLabel(label, theme) {
 
 let activeTheme = null;
 let timelineData = {};
+let isBackfilling = false; // バックフィル実行中フラグ
 
 function initTimeline() {
   const grid = document.getElementById('theme-grid');
@@ -856,7 +857,13 @@ function initTimeline() {
     const card = document.createElement('div');
     card.className = 'theme-card' + (activeTheme && activeTheme.id === theme.id ? ' active' : '');
     card.innerHTML = `<div class="theme-name">${theme.name}</div><div class="theme-desc">${theme.desc}</div>`;
-    card.onclick = () => selectTheme(theme);
+    card.onclick = () => {
+      if (isBackfilling) {
+        alert('過去データの取得中はテーマを切り替えられません。完了をお待ちください。');
+        return;
+      }
+      selectTheme(theme);
+    };
     grid.appendChild(card);
   });
   if (activeTheme) {
@@ -930,6 +937,7 @@ async function startBackfill() {
 
   btnBackfill.disabled = true;
   btnUpdate.disabled = true;
+  isBackfilling = true;
   progress.style.display = 'block';
 
   for (let i = 0; i < remaining.length; i++) {
@@ -986,6 +994,7 @@ async function startBackfill() {
   setTimeout(() => { progress.style.display = 'none'; }, 3000);
   btnBackfill.disabled = false;
   btnUpdate.disabled = false;
+  isBackfilling = false;
 }
 
 async function updateTimeline() {
