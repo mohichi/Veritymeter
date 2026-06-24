@@ -433,6 +433,128 @@
     background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
   }
   .daily-error { display: none; }
+
+  /* 時系列マップ */
+  .timeline-themes { margin-bottom: 1.5rem; }
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 1rem;
+  }
+  .theme-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .theme-card:hover { border-color: var(--color-text-tertiary); }
+  .theme-card.active { border-color: var(--color-text-primary); background: var(--color-text-primary); color: #fff; }
+  .theme-card.active .theme-desc { color: rgba(255,255,255,0.7); }
+  .theme-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .theme-desc { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .timeline-view { margin-top: 1.5rem; }
+  .timeline-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .timeline-title { font-size: 17px; font-weight: 600; }
+  .btn-update {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500;
+    padding: 8px 16px;
+    background: var(--color-text-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+  }
+  .btn-update:hover { opacity: 0.85; }
+  .btn-update:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .timeline-cards { position: relative; }
+  .timeline-card {
+    display: flex; gap: 16px;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+  .timeline-date-col {
+    flex-shrink: 0;
+    width: 80px;
+    text-align: right;
+    padding-top: 14px;
+  }
+  .timeline-date {
+    font-size: 12px; font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+  .timeline-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--color-text-primary);
+    position: absolute;
+    right: -5px;
+    top: 18px;
+  }
+  .timeline-line-col {
+    flex-shrink: 0;
+    width: 1px;
+    background: var(--color-border);
+    position: relative;
+    margin: 0 12px;
+  }
+  .timeline-content {
+    flex: 1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 0;
+  }
+  .timeline-source {
+    font-size: 11px; color: var(--color-text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .timeline-headline {
+    font-size: 14px; font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    display: block;
+  }
+  .timeline-headline:hover { text-decoration: underline; }
+  .timeline-summary { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px; }
+  .timeline-diff {
+    font-size: 12px;
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    color: var(--color-info-text);
+    border-radius: var(--radius-md);
+    padding: 6px 10px;
+    margin-top: 6px;
+  }
+  .timeline-diff::before { content: "↑ 前回からの変化："; font-weight: 600; margin-right: 4px; }
+  .timeline-score {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 600;
+    margin-top: 6px;
+  }
+  .timeline-loading {
+    text-align: center; padding: 2rem;
+    font-size: 13px; color: var(--color-text-tertiary);
+    display: none;
+  }
+  .timeline-empty {
+    text-align: center; padding: 2rem;
+    font-size: 13px; color: var(--color-text-tertiary);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
 </style>
 </head>
 <body>
@@ -441,6 +563,7 @@
   <div class="header-inner">
     <div class="logo" onclick="showPage('main')" style="cursor:pointer;"><i class="ti ti-scale"></i> VerityMeter</div>
     <nav class="header-links">
+      <a href="#" onclick="showPage('timeline'); return false;"><i class="ti ti-timeline"></i> 時系列</a>
       <a href="#" onclick="showPage('howto'); return false;">使い方</a>
       <a href="#" onclick="showPage('disclaimer'); return false;">免責事項</a>
     </nav>
@@ -558,6 +681,31 @@
 
   </div>
 
+  <div class="static-page" id="page-timeline">
+    <a href="#" class="back-link" onclick="showPage('main'); return false;"><i class="ti ti-arrow-left"></i> トップに戻る</a>
+    <h2 style="margin-bottom:0.5rem;"><i class="ti ti-timeline"></i> 時系列マップ</h2>
+    <p style="font-size:13px; color:var(--color-text-tertiary); margin-bottom:1.5rem;">注目テーマのニュースが時間とともにどう変化したかを追跡します</p>
+
+    <div class="timeline-themes">
+      <div style="font-size:13px; font-weight:600; color:var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.5rem;">特集テーマ</div>
+      <div class="theme-grid" id="theme-grid"></div>
+    </div>
+
+    <div class="timeline-view" id="timeline-view" style="display:none;">
+      <div class="timeline-header">
+        <div class="timeline-title" id="timeline-title"></div>
+        <button class="btn-update" id="btn-update" onclick="updateTimeline()">
+          <i class="ti ti-refresh"></i> 最新情報を取得
+        </button>
+      </div>
+      <div class="timeline-loading" id="timeline-loading">
+        <div class="loading-spinner" style="margin:0 auto 10px;"></div>
+        AIが最新ニュースを調査中...
+      </div>
+      <div class="timeline-cards" id="timeline-cards"></div>
+    </div>
+  </div>
+
   <div class="static-page" id="page-howto">
     <a href="#" class="back-link" onclick="showPage('main'); return false;"><i class="ti ti-arrow-left"></i> トップに戻る</a>
     <h2>VerityMeterの使い方</h2>
@@ -623,7 +771,118 @@ function showPage(page) {
   document.getElementById('page-main').style.display = (page === 'main') ? 'block' : 'none';
   document.getElementById('page-howto').style.display = (page === 'howto') ? 'block' : 'none';
   document.getElementById('page-disclaimer').style.display = (page === 'disclaimer') ? 'block' : 'none';
+  document.getElementById('page-timeline').style.display = (page === 'timeline') ? 'block' : 'none';
+  if (page === 'timeline') initTimeline();
   window.scrollTo(0, 0);
+}
+
+// ===== 時系列マップ =====
+const TIMELINE_THEMES = [
+  { id: "us-iran", name: "米国・イラン情勢", desc: "双方の主張と外交の変化を追跡", keywords: "米国 イラン 外交 制裁 核合意" },
+  { id: "bear", name: "クマの出没情報", desc: "全国のクマ出没・被害状況を追跡", keywords: "クマ 出没 被害 目撃 注意" },
+  { id: "naphtha", name: "ナフサ不足問題", desc: "石油化学原料の需給変化を追跡", keywords: "ナフサ 不足 石油化学 供給 価格" },
+];
+
+let activeTheme = null;
+let timelineData = {};
+
+function initTimeline() {
+  const grid = document.getElementById('theme-grid');
+  grid.innerHTML = '';
+  TIMELINE_THEMES.forEach(theme => {
+    const card = document.createElement('div');
+    card.className = 'theme-card' + (activeTheme && activeTheme.id === theme.id ? ' active' : '');
+    card.innerHTML = `<div class="theme-name">${theme.name}</div><div class="theme-desc">${theme.desc}</div>`;
+    card.onclick = () => selectTheme(theme);
+    grid.appendChild(card);
+  });
+  if (activeTheme) {
+    document.getElementById('timeline-view').style.display = 'block';
+    renderTimelineCards(activeTheme.id);
+  }
+}
+
+function selectTheme(theme) {
+  activeTheme = theme;
+  document.getElementById('timeline-title').textContent = theme.name;
+  document.getElementById('timeline-view').style.display = 'block';
+  initTimeline();
+  renderTimelineCards(theme.id);
+}
+
+function renderTimelineCards(themeId) {
+  const container = document.getElementById('timeline-cards');
+  const data = timelineData[themeId] || [];
+  container.innerHTML = '';
+
+  if (data.length === 0) {
+    container.innerHTML = '<div class="timeline-empty">「最新情報を取得」ボタンを押すと、AIがこのテーマの最新ニュースを調査します。</div>';
+    return;
+  }
+
+  data.slice().reverse().forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    const scoreColor = item.score >= 70 ? '#3B6D11' : item.score >= 45 ? '#BA7517' : '#A32D2D';
+    card.innerHTML = `
+      <div class="timeline-date-col">
+        <div class="timeline-date">${item.date}</div>
+      </div>
+      <div style="position:relative; flex-shrink:0; width:1px; background:var(--color-border); margin:0 12px;">
+        <div class="timeline-dot"></div>
+      </div>
+      <div class="timeline-content">
+        <div class="timeline-source">${item.source || 'AI調査'}</div>
+        <a class="timeline-headline" href="${item.url || '#'}" target="_blank" rel="noopener noreferrer">${item.headline}</a>
+        <div class="timeline-summary">${item.summary}</div>
+        ${item.diff ? `<div class="timeline-diff">${item.diff}</div>` : ''}
+        <div class="timeline-score" style="color:${scoreColor}">
+          <i class="ti ti-shield-check"></i> 信憑性スコア ${item.score}
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function updateTimeline() {
+  if (!activeTheme) return;
+  const btn = document.getElementById('btn-update');
+  const loading = document.getElementById('timeline-loading');
+  btn.disabled = true;
+  loading.style.display = 'block';
+
+  try {
+    const res = await fetch('/api/timeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        themeId: activeTheme.id,
+        themeName: activeTheme.name,
+        keywords: activeTheme.keywords,
+        previousData: timelineData[activeTheme.id] || []
+      })
+    });
+
+    loading.style.display = 'none';
+    btn.disabled = false;
+
+    if (!res.ok) {
+      alert('情報の取得に失敗しました。しばらくしてから再度お試しください。');
+      return;
+    }
+
+    const json = await res.json();
+    if (json.entry) {
+      if (!timelineData[activeTheme.id]) timelineData[activeTheme.id] = [];
+      timelineData[activeTheme.id].push(json.entry);
+      renderTimelineCards(activeTheme.id);
+    }
+  } catch(e) {
+    loading.style.display = 'none';
+    btn.disabled = false;
+    alert('通信エラーが発生しました。');
+  }
 }
 
 // ===== 本日のメディア別ニュース =====
