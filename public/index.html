@@ -862,7 +862,12 @@ function selectTheme(theme) {
   activeTheme = theme;
   document.getElementById('timeline-title').textContent = theme.name;
   document.getElementById('timeline-view').style.display = 'block';
+  // バックフィル進捗をリセット
+  document.getElementById('backfill-progress').style.display = 'none';
+  document.getElementById('btn-backfill').disabled = false;
+  document.getElementById('btn-update').disabled = false;
   initTimeline();
+  // そのテーマのデータのみ表示（他テーマのデータは含まない）
   renderTimelineCards(theme.id);
 }
 
@@ -942,11 +947,17 @@ async function startBackfill() {
       if (res.ok) {
         const json = await res.json();
         if (json.entry) {
-          if (!timelineData[activeTheme.id]) timelineData[activeTheme.id] = [];
-          // 日付順に挿入
-          timelineData[activeTheme.id].push(json.entry);
-          timelineData[activeTheme.id].sort((a, b) => a.date.localeCompare(b.date));
-          renderTimelineCards(activeTheme.id);
+          const currentThemeId = activeTheme.id; // 現在のテーマを明示的に記録
+          if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
+          // 同じ期間のデータが既にあれば上書き、なければ追加
+          const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+          if (existingIdx >= 0) {
+            timelineData[currentThemeId][existingIdx] = json.entry;
+          } else {
+            timelineData[currentThemeId].push(json.entry);
+          }
+          timelineData[currentThemeId].sort((a, b) => a.date.localeCompare(b.date));
+          renderTimelineCards(currentThemeId);
         }
       }
     } catch(e) {
@@ -995,9 +1006,16 @@ async function updateTimeline() {
 
     const json = await res.json();
     if (json.entry) {
-      if (!timelineData[activeTheme.id]) timelineData[activeTheme.id] = [];
-      timelineData[activeTheme.id].push(json.entry);
-      renderTimelineCards(activeTheme.id);
+      const currentThemeId = activeTheme.id;
+      if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
+      const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+      if (existingIdx >= 0) {
+        timelineData[currentThemeId][existingIdx] = json.entry;
+      } else {
+        timelineData[currentThemeId].push(json.entry);
+      }
+      timelineData[currentThemeId].sort((a, b) => a.date.localeCompare(b.date));
+      renderTimelineCards(currentThemeId);
     }
   } catch(e) {
     loading.style.display = 'none';
