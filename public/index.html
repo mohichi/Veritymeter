@@ -538,11 +538,6 @@
     margin-top: 6px;
   }
   .timeline-diff::before { content: "↑ 前回からの変化："; font-weight: 600; margin-right: 4px; }
-  .timeline-score {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 12px; font-weight: 600;
-    margin-top: 6px;
-  }
   .timeline-loading {
     text-align: center; padding: 2rem;
     font-size: 13px; color: var(--color-text-tertiary);
@@ -836,9 +831,6 @@ function renderTimelineCards(themeId) {
         <a class="timeline-headline" href="${item.url || '#'}" target="_blank" rel="noopener noreferrer">${item.headline}</a>
         <div class="timeline-summary">${item.summary}</div>
         ${item.diff ? `<div class="timeline-diff">${item.diff}</div>` : ''}
-        <div class="timeline-score" style="color:${scoreColor}">
-          <i class="ti ti-shield-check"></i> 信憑性スコア ${item.score}
-        </div>
       </div>
     `;
     container.appendChild(card);
