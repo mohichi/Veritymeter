@@ -514,7 +514,24 @@
   .tip-item:last-child { border-bottom: none; }
   .tip-icon { flex-shrink: 0; color: var(--color-info-text); }
 
-  /* 時系列マップ */
+  /* 豆知識カード */
+  .trivia-card {
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    border-radius: var(--radius-lg);
+    padding: 0.9rem 1.2rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .trivia-icon { flex-shrink: 0; color: var(--color-info-text); font-size: 16px; margin-top: 2px; }
+  .trivia-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--color-info-text); text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .trivia-text { font-size: 13px; color: var(--color-text-primary); line-height: 1.6; }
   .timeline-themes { margin-bottom: 1.5rem; }
   .theme-grid {
     display: grid;
@@ -667,6 +684,14 @@
     </a>
   </div>
 
+  <div class="trivia-card" id="trivia-card">
+    <i class="ti ti-bulb trivia-icon"></i>
+    <div>
+      <div class="trivia-label">💡 今日の情報リテラシー豆知識</div>
+      <div class="trivia-text" id="trivia-text"></div>
+    </div>
+  </div>
+
   <div class="input-area">
     <div class="input-row">
       <div class="input-wrap">
@@ -786,11 +811,6 @@
     </div>
   </div>
 
-  <div class="footer-note">
-    AIによる分析は補助的なものであり、完全性・正確性を保証するものではありません。<br>
-    最終的な判断はご自身の確認と責任のもとで行ってください。
-  </div>
-
   <div class="daily-section">
     <div class="daily-section-header">
       <div class="daily-section-title"><i class="ti ti-news"></i> 本日のメディア別ニュース</div>
@@ -805,6 +825,11 @@
     </div>
     <div class="daily-error" id="daily-error"></div>
     <ul class="news-list" id="news-list"></ul>
+  </div>
+
+  <div class="footer-note">
+    AIによる分析は補助的なものであり、完全性・正確性を保証するものではありません。<br>
+    最終的な判断はご自身の確認と責任のもとで行ってください。
   </div>
 
   </div>
@@ -1214,7 +1239,39 @@ async function updateTimeline() {
   }
 }
 
-// ===== 本日のメディア別ニュース =====
+// ===== 情報リテラシー豆知識 =====
+const TRIVIA_LIST = [
+  "同じ情報を何度も見ると、人は真実だと思いやすくなります。これを「真実性の錯覚」と呼びます。",
+  "見出しだけ読んで本文を読まないと、書き手の意図通りに情報を受け取ってしまうことがあります。",
+  "感情を強く揺さぶる記事ほど、内容を批判的に読むことが難しくなります。",
+  "「専門家によると」という表現だけでは、その専門家が誰なのかを確認することが大切です。",
+  "自分が信じたいことを支持する情報を無意識に集めてしまう傾向を「確証バイアス」と呼びます。",
+  "数字や統計は、母数や調査方法によって全く異なる印象を与えることがあります。",
+  "「〜と言われている」「〜らしい」という表現は、出典が不明確なサインです。",
+  "写真や動画は文脈を変えることで、全く異なる意味を持たせることができます。",
+  "SNSでシェアされやすい情報は、必ずしも信頼性が高いわけではありません。",
+  "反対意見を意図的に省略することで、一方的な印象を与える記事は多くあります。",
+  "「緊急」「衝撃」「驚愕」などの煽り言葉は、冷静な判断を妨げる効果があります。",
+  "情報の一次情報源（政府発表・論文・当事者の発言）を直接確認する習慣が重要です。",
+  "人は自分のグループ（国・政党・チームなど）に有利な情報を信じやすい傾向があります。",
+  "タイトルと本文の内容が一致しない「クリックベイト」に注意が必要です。",
+  "報道機関も完全ではなく、誤報や訂正が発生することがあります。複数の情報源を参照しましょう。",
+  "AIが生成した文章や画像は、見た目だけでは本物と区別がつかないことがあります。",
+  "「みんなが言っている」という表現は、実際の根拠がない場合に使われやすい表現です。",
+  "感情的になっている時ほど、情報の真偽を冷静に判断することが難しくなります。",
+  "記事の公開日を確認しましょう。古い情報が最新情報のように拡散されることがあります。",
+  "出典のないグラフや統計は、作成者の意図に合わせて加工されている可能性があります。",
+];
+
+function showDailyTrivia() {
+  // 日付をシードにして「今日の豆知識」を決定（同じ日は同じ豆知識）
+  const today = new Date();
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const idx = seed % TRIVIA_LIST.length;
+  document.getElementById('trivia-text').textContent = TRIVIA_LIST[idx];
+}
+
+showDailyTrivia();
 let dailyNewsData = null;
 let activeMediaId = null;
 
@@ -1288,7 +1345,7 @@ function renderNewsList(mediaId) {
     return;
   }
 
-  media.articles.forEach(a => {
+  media.articles.slice(0, 3).forEach(a => {
     const li = document.createElement('li');
     li.className = 'news-item';
     const score = Math.min(100, Math.max(0, a.score || 0));
