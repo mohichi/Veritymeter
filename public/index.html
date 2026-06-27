@@ -1,113 +1,1925 @@
-// Cloudflare Pages Functions - fact-check.js
-// うわさ・デマ・都市伝説の真偽をAIが検証する
-// コスト削減：web_searchなし、Haiku、max_tokens 600
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VerityMeter | AIによる記事の信憑性診断</title>
+<meta name="description" content="ニュース記事のURLを入力するだけで、AIが信憑性をスコアで診断。事実と憶測、誇張表現を見抜きます。">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --color-bg: #FAFAF8;
+    --color-surface: #FFFFFF;
+    --color-border: #E5E3DD;
+    --color-text-primary: #1A1A18;
+    --color-text-secondary: #5C5A52;
+    --color-text-tertiary: #918F86;
+    --color-accent: #1A1A18;
 
-export async function onRequestPost(context) {
-  const { request, env } = context;
+    --color-success-bg: #EFF6E9;
+    --color-success-text: #3B6D11;
+    --color-success-border: #C9E0BA;
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+    --color-warning-bg: #FDF6E8;
+    --color-warning-text: #BA7517;
+    --color-warning-border: #F0DDB0;
+
+    --color-danger-bg: #FBEDEC;
+    --color-danger-text: #A32D2D;
+    --color-danger-border: #F0C6C4;
+
+    --color-info-bg: #EBF1FA;
+    --color-info-text: #2A5A9C;
+    --color-info-border: #C7D9F0;
+
+    --radius-md: 8px;
+    --radius-lg: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+  }
+
+  header {
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .header-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 17px;
+  }
+  .logo i { color: var(--color-text-secondary); }
+  .header-links { display: flex; gap: 20px; font-size: 13px; }
+  .header-links a { color: var(--color-text-secondary); text-decoration: none; }
+  .header-links a:hover { color: var(--color-text-primary); }
+
+  main { max-width: 720px; margin: 0 auto; padding: 2.5rem 20px 4rem; }
+
+  .hero { text-align: center; margin-bottom: 2rem; }
+  .hero-badge {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--color-info-text);
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    border-radius: 99px;
+    padding: 4px 14px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+  .hero h1 { font-size: 26px; font-weight: 600; margin-bottom: 10px; }
+  .hero p { font-size: 15px; color: var(--color-text-secondary); }
+
+  .input-area {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .input-row { display: flex; gap: 8px; }
+  .input-wrap { flex: 1; position: relative; display: flex; align-items: center; }
+  .input-wrap input {
+    width: 100%;
+    font-size: 14px;
+    padding: 0 36px 0 14px;
+    height: 44px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+  }
+  .input-wrap input:focus { outline: none; border-color: var(--color-text-tertiary); }
+  .clear-btn {
+    display: none;
+    position: absolute;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: var(--color-border);
+    color: var(--color-text-secondary);
+    border-radius: 50%;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+  .clear-btn:hover { background: var(--color-text-tertiary); color: #fff; }
+  .clear-btn.visible { display: flex; }
+  .btn-check {
+    height: 44px;
+    padding: 0 22px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--color-text-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-check:hover { opacity: 0.85; }
+  .btn-check:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .examples { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .example-chip {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 99px;
+    padding: 5px 14px;
+    cursor: pointer;
+  }
+  .example-chip:hover { border-color: var(--color-text-tertiary); color: var(--color-text-primary); }
+
+  .loading {
+    display: none;
+    text-align: center;
+    padding: 3rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+  .loading-spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-text-primary);
+    border-radius: 50%;
+    margin: 0 auto 14px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { font-size: 14px; color: var(--color-text-secondary); }
+
+  .result { display: none; }
+
+  .score-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.75rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .meter-wrap { flex-shrink: 0; position: relative; width: 110px; height: 65px; }
+  .meter-label {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    font-size: 26px; font-weight: 700;
+  }
+  .meter-sub {
+    position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: var(--color-text-tertiary); white-space: nowrap;
+  }
+  .score-info { flex: 1; min-width: 0; }
+  .score-verdict { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .score-source { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 10px; word-break: break-all; }
+  .score-summary { font-size: 14px; color: var(--color-text-secondary); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .tag { font-size: 11px; padding: 4px 12px; border-radius: 99px; border: 1px solid; font-weight: 500; }
+  .tag-danger { background: var(--color-danger-bg); color: var(--color-danger-text); border-color: var(--color-danger-border); }
+  .tag-warning { background: var(--color-warning-bg); color: var(--color-warning-text); border-color: var(--color-warning-border); }
+  .tag-success { background: var(--color-success-bg); color: var(--color-success-text); border-color: var(--color-success-border); }
+  .tag-info { background: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info-border); }
+
+  .section-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .section-title {
+    font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 1rem; display: flex; align-items: center; gap: 6px;
+  }
+  .check-list { list-style: none; }
+  .check-list li {
+    display: flex; gap: 10px; padding: 9px 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 14px; align-items: flex-start;
+  }
+  .check-list li:last-child { border-bottom: none; }
+  .check-icon { flex-shrink: 0; margin-top: 2px; }
+
+  .warning-list { list-style: none; }
+  .warning-list li {
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .warning-list li:last-child { margin-bottom: 0; }
+  .warning-excerpt { font-size: 12px; color: var(--color-warning-text); margin-top: 6px; font-style: italic; }
+
+  .footer-note {
+    font-size: 12px; color: var(--color-text-tertiary);
+    text-align: center; margin-top: 1.5rem; line-height: 1.8;
+  }
+
+  .error-box {
+    display: none;
+    background: var(--color-danger-bg);
+    border: 1px solid var(--color-danger-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    font-size: 14px; color: var(--color-danger-text);
+    margin-bottom: 1rem;
+  }
+
+  footer {
+    border-top: 1px solid var(--color-border);
+    padding: 2rem 20px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+  }
+  footer a { color: var(--color-text-tertiary); }
+
+  /* 記事プレビューカード */
+  .article-preview {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .article-preview-icon {
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-text-tertiary);
+    font-size: 16px;
+  }
+  .article-preview-body { min-width: 0; flex: 1; }
+  .article-preview-site {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+  }
+  .article-preview-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  .article-preview-excerpt {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+  .article-preview-url {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    margin-top: 6px;
+    word-break: break-all;
+  }
+
+  /* メディア背景（補助情報）カード */
+  .media-card {
+    background: var(--color-bg);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .media-card .section-title { color: var(--color-text-tertiary); margin-bottom: 8px; }
+  .media-card-row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+  .media-card-type {
+    font-size: 13px; font-weight: 600;
+  }
+  .media-card-note {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+
+  /* 静的ページ（使い方・免責事項） */
+  .static-page { display: none; }
+  .static-page h2 {
+    font-size: 19px; font-weight: 600; margin: 1.75rem 0 0.75rem;
+  }
+  .static-page h2:first-child { margin-top: 0; }
+  .static-page p, .static-page li {
+    font-size: 14px; color: var(--color-text-secondary); line-height: 1.8;
+  }
+  .static-page ul, .static-page ol { padding-left: 1.4em; margin-bottom: 0.5rem; }
+  .static-page .step-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.2rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .static-page .step-num {
+    flex-shrink: 0;
+    width: 24px; height: 24px;
+    background: var(--color-text-primary);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600;
+  }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 13px; color: var(--color-text-secondary);
+    margin-bottom: 1.25rem; cursor: pointer; text-decoration: none;
+  }
+  .back-link:hover { color: var(--color-text-primary); }
+
+  @media (max-width: 480px) {
+    .score-section { flex-direction: column; text-align: center; }
+    .input-row { flex-direction: column; }
+  }
+
+  /* 本日のメディア別ニュース */
+  .daily-section { margin: 2.5rem 0; }
+  .daily-section-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .daily-section-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .daily-section-date { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .media-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .media-tab {
+    flex-shrink: 0;
+    font-size: 12px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 99px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .media-tab.active { background: var(--color-text-primary); color: #fff; border-color: var(--color-text-primary); }
+
+  .news-list { list-style: none; }
+  .news-item {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1rem;
+    margin-bottom: 8px;
+  }
+  .news-score {
+    flex-shrink: 0;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    color: #fff;
+  }
+  .news-body { min-width: 0; flex: 1; }
+  .news-title {
+    font-size: 14px; font-weight: 500;
+    margin-bottom: 3px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    display: block;
+  }
+  .news-title:hover { text-decoration: underline; }
+  .news-excerpt { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 3px; }
+  .news-comment { font-size: 12px; color: var(--color-text-secondary); }
+
+  .daily-loading, .daily-error, .daily-empty {
+    text-align: center; padding: 2rem; font-size: 13px; color: var(--color-text-tertiary);
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  }
+  .daily-error { display: none; }
+
+  /* 深層分析 */
+  .deep-analysis-section { margin-top: 1rem; }
+  .btn-deep {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px; font-weight: 500;
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-deep:hover { border-color: var(--color-text-tertiary); color: var(--color-text-primary); }
+  .btn-deep:disabled { opacity: 0.5; cursor: not-allowed; }
+  .deep-result { display: none; margin-top: 1rem; }
+  .deep-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .deep-card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bias-item {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+  }
+  .bias-item:last-child { border-bottom: none; }
+  .bias-severity {
+    flex-shrink: 0;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 99px;
+  }
+  .severity-high { background: var(--color-danger-bg); color: var(--color-danger-text); }
+  .severity-medium { background: var(--color-warning-bg); color: var(--color-warning-text); }
+  .severity-low { background: var(--color-success-bg); color: var(--color-success-text); }
+  .bias-name { font-weight: 600; margin-bottom: 2px; }
+  .bias-desc { color: var(--color-text-secondary); }
+  .fact-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .fact-box {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .fact-box-label { font-weight: 600; margin-bottom: 4px; color: var(--color-text-secondary); }
+  .intent-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-bottom: 10px;
+  }
+  .intent-box {
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .intent-box-label { font-weight: 600; color: var(--color-info-text); margin-bottom: 4px; }
+  .tip-item {
+    display: flex; gap: 8px; align-items: flex-start;
+    font-size: 13px; padding: 6px 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+  .tip-item:last-child { border-bottom: none; }
+  .tip-icon { flex-shrink: 0; color: var(--color-info-text); }
+
+  /* モード切り替え */
+  .mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+  .mode-btn {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem 1rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .mode-btn:hover { border-color: var(--color-text-tertiary); }
+  .mode-btn.active { border-color: var(--color-text-primary); background: var(--color-text-primary); color: #fff; }
+  .mode-btn.active .mode-desc { color: rgba(255,255,255,0.7); }
+  .mode-icon { font-size: 28px; margin-bottom: 8px; }
+  .mode-label { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .mode-desc { font-size: 12px; color: var(--color-text-tertiary); }
+
+  /* 真偽検証 */
+  .factcheck-input-area {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .factcheck-input {
+    width: 100%; font-size: 14px; padding: 12px 14px;
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: var(--color-bg); margin-bottom: 10px;
+    resize: vertical; min-height: 80px; font-family: inherit;
+  }
+  .factcheck-input:focus { outline: none; border-color: var(--color-text-tertiary); }
+  .verdict-card {
+    background: var(--color-surface); border: 2px solid var(--color-border);
+    border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; display: none;
+  }
+  .verdict-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 16px; font-weight: 700; padding: 8px 20px;
+    border-radius: 99px; margin-bottom: 1rem;
+  }
+  .verdict-true { background: var(--color-success-bg); color: var(--color-success-text); border: 1px solid var(--color-success-border); }
+  .verdict-false { background: var(--color-danger-bg); color: var(--color-danger-text); border: 1px solid var(--color-danger-border); }
+  .verdict-partial { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
+  .verdict-unknown { background: var(--color-info-bg); color: var(--color-info-text); border: 1px solid var(--color-info-border); }
+  .verdict-summary { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .verdict-detail { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 10px; line-height: 1.7; }
+  .verdict-why {
+    font-size: 12px; background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 8px 12px; color: var(--color-text-secondary);
+  }
+  .verdict-why::before { content: "💡 なぜ信じられやすいか："; font-weight: 600; color: var(--color-text-primary); }
+  .dema-section { margin-top: 2rem; }
+  .dema-section-title {
+    font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 1rem; display: flex; align-items: center; gap: 6px;
+  }
+  .dema-categories { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .dema-category-btn {
+    font-size: 12px; padding: 5px 12px; border: 1px solid var(--color-border);
+    border-radius: 99px; background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer;
+  }
+  .dema-category-btn.active { background: var(--color-text-primary); color: #fff; border-color: var(--color-text-primary); }
+  .dema-list { display: flex; flex-direction: column; gap: 8px; }
+  .dema-item {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0.9rem 1rem;
+    cursor: pointer; display: flex; align-items: center; gap: 10px; transition: border-color 0.15s;
+  }
+  .dema-item:hover { border-color: var(--color-text-tertiary); }
+  .dema-verdict-dot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; }
+  .dot-false { background: var(--color-danger-text); }
+  .dot-partial { background: var(--color-warning-text); }
+  .dot-true { background: var(--color-success-text); }
+  .dot-unknown { background: var(--color-info-text); }
+  .dema-claim { font-size: 14px; font-weight: 500; flex: 1; }
+  .dema-category-tag { font-size: 11px; color: var(--color-text-tertiary); flex-shrink: 0; }
+
+  /* 豆知識カード */
+  .trivia-card {
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    border-radius: var(--radius-lg);
+    padding: 0.9rem 1.2rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .trivia-icon { flex-shrink: 0; color: var(--color-info-text); font-size: 16px; margin-top: 2px; }
+  .trivia-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--color-info-text); text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .trivia-text { font-size: 13px; color: var(--color-text-primary); line-height: 1.6; }
+  .timeline-themes { margin-bottom: 1.5rem; }
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 1rem;
+  }
+  .theme-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .theme-card:hover { border-color: var(--color-text-tertiary); }
+  .theme-card.active { border-color: var(--color-text-primary); background: var(--color-text-primary); color: #fff; }
+  .theme-card.active .theme-desc { color: rgba(255,255,255,0.7); }
+  .theme-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .theme-desc { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .timeline-view { margin-top: 1.5rem; }
+  .timeline-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .timeline-title { font-size: 17px; font-weight: 600; }
+  .btn-update {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500;
+    padding: 8px 16px;
+    background: var(--color-text-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+  }
+  .btn-update:hover { opacity: 0.85; }
+  .btn-update:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .timeline-cards { position: relative; }
+  .timeline-card {
+    display: flex; gap: 16px;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+  .timeline-date-col {
+    flex-shrink: 0;
+    width: 80px;
+    text-align: right;
+    padding-top: 14px;
+  }
+  .timeline-date {
+    font-size: 12px; font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+  .timeline-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--color-text-primary);
+    position: absolute;
+    right: -5px;
+    top: 18px;
+  }
+  .timeline-line-col {
+    flex-shrink: 0;
+    width: 1px;
+    background: var(--color-border);
+    position: relative;
+    margin: 0 12px;
+  }
+  .timeline-content {
+    flex: 1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 0;
+  }
+  .timeline-source {
+    font-size: 11px; color: var(--color-text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .timeline-headline {
+    font-size: 14px; font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    display: block;
+  }
+  .timeline-headline:hover { text-decoration: underline; }
+  .timeline-summary { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px; }
+  .timeline-diff {
+    font-size: 12px;
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info-border);
+    color: var(--color-info-text);
+    border-radius: var(--radius-md);
+    padding: 6px 10px;
+    margin-top: 6px;
+  }
+  .timeline-diff::before { content: "↑ 前回からの変化："; font-weight: 600; margin-right: 4px; }
+  .timeline-loading {
+    text-align: center; padding: 2rem;
+    font-size: 13px; color: var(--color-text-tertiary);
+    display: none;
+  }
+  .timeline-empty {
+    text-align: center; padding: 2rem;
+    font-size: 13px; color: var(--color-text-tertiary);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo" onclick="showPage('main')" style="cursor:pointer;"><i class="ti ti-scale"></i> VerityMeter</div>
+    <nav class="header-links">
+      <a href="#" onclick="showPage('howto'); return false;">使い方</a>
+      <a href="#" onclick="showPage('disclaimer'); return false;">免責事項</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div id="page-main">
+
+  <!-- モード切り替え -->
+  <div class="mode-switch">
+    <button class="mode-btn active" id="mode-btn-article" onclick="switchMode('article')">
+      <div class="mode-icon">📰</div>
+      <div class="mode-label">記事の信頼度を診断</div>
+      <div class="mode-desc">URLを貼るだけでAIが分析</div>
+    </button>
+    <button class="mode-btn" id="mode-btn-factcheck" onclick="switchMode('factcheck')">
+      <div class="mode-icon">🔍</div>
+      <div class="mode-label">うわさ・デマを検証</div>
+      <div class="mode-desc">都市伝説の真偽をAIが解説</div>
+    </button>
+  </div>
+
+  <!-- 記事診断モード -->
+  <div id="mode-article">
+  <div class="hero">
+    <div class="hero-badge"><i class="ti ti-microscope"></i> AI信憑性診断</div>
+    <h1>その記事、信頼できますか？</h1>
+    <p>URLを貼るだけで、AIが記事の信憑性をスコアで診断します</p>
+    <a href="https://ko-fi.com/veritymeter" target="_blank" rel="noopener noreferrer" style="
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 14px;
+      font-size: 13px; font-weight: 500;
+      color: var(--color-text-secondary);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 99px;
+      padding: 6px 16px;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    " onmouseover="this.style.borderColor='var(--color-text-tertiary)'" onmouseout="this.style.borderColor='var(--color-border)'">
+      ☕ このサービスを応援する（Ko-fi）
+    </a>
+  </div>
+
+  <div class="trivia-card" id="trivia-card">
+    <i class="ti ti-bulb trivia-icon"></i>
+    <div>
+      <div class="trivia-label">💡 今日の情報リテラシー豆知識</div>
+      <div class="trivia-text" id="trivia-text"></div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <div class="input-wrap">
+        <input type="text" id="url-input" placeholder="記事のURLを貼り付けてください" oninput="toggleClearBtn()" />
+        <button type="button" class="clear-btn" id="clear-btn" onclick="clearInput()" aria-label="入力をクリア">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <button class="btn-check" id="check-btn" onclick="runCheck()">
+        <i class="ti ti-search"></i>診断する
+      </button>
+    </div>
+    <div class="examples">
+      <span style="font-size:12px; color:var(--color-text-tertiary); padding: 5px 0;">例：</span>
+      <button class="example-chip" onclick="fillExample('https://www3.nhk.or.jp/')">NHKニュース</button>
+      <button class="example-chip" onclick="fillExample('https://news.yahoo.co.jp/')">Yahoo!ニュース</button>
+    </div>
+  </div>
+
+  <div class="error-box" id="error-box">
+    <i class="ti ti-alert-circle"></i> <span id="error-msg"></span>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="loading-spinner"></div>
+    <p id="loading-msg">記事を取得して分析しています...</p>
+  </div>
+
+  <div class="result" id="result">
+
+    <div class="article-preview" id="article-preview">
+      <div class="article-preview-icon"><i class="ti ti-file-text"></i></div>
+      <div class="article-preview-body">
+        <div class="article-preview-site" id="preview-site">—</div>
+        <div class="article-preview-title" id="preview-title">—</div>
+        <div class="article-preview-excerpt" id="preview-excerpt"></div>
+        <div class="article-preview-url" id="preview-url"></div>
+      </div>
+    </div>
+
+    <div class="score-section">
+      <div class="meter-wrap">
+        <svg width="110" height="65" viewBox="0 0 100 60">
+          <path d="M10 55 A45 45 0 0 1 90 55" fill="none" stroke="#E5E3DD" stroke-width="8" stroke-linecap="round"/>
+          <path id="meter-arc" d="M10 55 A45 45 0 0 1 90 55" fill="none" stroke="#888" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 141"/>
+        </svg>
+        <div class="meter-label" id="score-num">—</div>
+        <div class="meter-sub">/ 100</div>
+      </div>
+      <div class="score-info">
+        <div class="score-verdict" id="verdict-text">—</div>
+        <div class="score-summary" id="summary-text">—</div>
+        <div class="tags" id="tags-area"></div>
+      </div>
+    </div>
+
+    <div class="section-card" id="positives-card">
+      <div class="section-title"><i class="ti ti-circle-check" style="color:var(--color-success-text)"></i> 信頼できる点</div>
+      <ul class="check-list" id="positives-list"></ul>
+    </div>
+
+    <div class="section-card" id="warnings-card">
+      <div class="section-title"><i class="ti ti-alert-triangle" style="color:var(--color-warning-text)"></i> 注意が必要な記述</div>
+      <ul class="warning-list" id="warnings-list"></ul>
+    </div>
+
+    <div class="section-card" id="verdict-card">
+      <div class="section-title"><i class="ti ti-scale"></i> 総評</div>
+      <p id="verdict-full" style="font-size:14px; color:var(--color-text-secondary);"></p>
+    </div>
+
+    <div class="media-card" id="media-card">
+      <div class="section-title"><i class="ti ti-building-broadcast-tower"></i> 参考：媒体の傾向（補助情報）</div>
+      <div class="media-card-row">
+        <span class="tag tag-info" id="media-type">—</span>
+      </div>
+      <p class="media-card-note" id="media-note"></p>
+    </div>
+
+    <div class="deep-analysis-section">
+      <button class="btn-deep" id="btn-deep" onclick="runDeepAnalysis()">
+        <i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）
+      </button>
+      <div class="deep-result" id="deep-result">
+
+        <div class="deep-card" id="deep-biases-card">
+          <div class="deep-card-title"><i class="ti ti-brain"></i> 心理的バイアスの検出</div>
+          <div id="deep-biases-list"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-list-check"></i> 事実と意見の分離</div>
+          <div class="fact-grid" id="deep-fact-grid"></div>
+        </div>
+
+        <div class="deep-card" id="deep-manipulation-card">
+          <div class="deep-card-title"><i class="ti ti-alert-triangle"></i> 感情操作・意図的な表現</div>
+          <div id="deep-manipulation-content"></div>
+        </div>
+
+        <div class="deep-card" id="deep-perspectives-card">
+          <div class="deep-card-title"><i class="ti ti-arrows-exchange"></i> 欠けている視点・反対意見</div>
+          <div id="deep-perspectives-content"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-target"></i> 執筆者の意図分析</div>
+          <div class="intent-grid" id="deep-intent-grid"></div>
+        </div>
+
+        <div class="deep-card">
+          <div class="deep-card-title"><i class="ti ti-bulb"></i> メディアリテラシーのポイント</div>
+          <div id="deep-tips-list"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="daily-section">
+    <div class="daily-section-header">
+      <div class="daily-section-title"><i class="ti ti-news"></i> 本日のメディア別ニュース</div>
+      <div class="daily-section-date" id="daily-date"></div>
+    </div>
+
+    <div class="media-tabs" id="media-tabs"></div>
+
+    <div class="daily-loading" id="daily-loading">
+      <div class="loading-spinner" style="margin:0 auto 10px;"></div>
+      本日のニュースを読み込んでいます...
+    </div>
+    <div class="daily-error" id="daily-error"></div>
+    <ul class="news-list" id="news-list"></ul>
+  </div>
+
+  <!-- 時系列マップ（記事診断モード内） -->
+  <div class="static-page" id="section-timeline" style="display:block;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; margin-top:2rem;">
+      <h2 style="margin-bottom:0; font-size:18px;"><i class="ti ti-timeline"></i> 時系列マップ</h2>
+      <button onclick="resetTimelineData()" style="font-size:11px; color:var(--color-text-tertiary); background:none; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:4px 10px; cursor:pointer;">データをリセット</button>
+    </div>
+    <p style="font-size:13px; color:var(--color-text-tertiary); margin-bottom:1.5rem;">注目テーマのニュースが時間とともにどう変化したかを追跡します</p>
+    <div class="timeline-themes">
+      <div style="font-size:13px; font-weight:600; color:var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.5rem;">特集テーマ</div>
+      <div class="theme-grid" id="theme-grid"></div>
+    </div>
+    <div class="timeline-view" id="timeline-view" style="display:none;">
+      <div class="timeline-header">
+        <div class="timeline-title" id="timeline-title"></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-update" id="btn-backfill" onclick="startBackfill()" style="background:var(--color-text-secondary);">
+            <i class="ti ti-history"></i> 過去を遡る
+          </button>
+          <button class="btn-update" id="btn-update" onclick="updateTimeline()">
+            <i class="ti ti-refresh"></i> 最新情報を取得
+          </button>
+        </div>
+      </div>
+      <div id="backfill-progress" style="display:none; margin-bottom:1rem;">
+        <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:6px;" id="backfill-status">調査中...</div>
+        <div style="background:var(--color-border); border-radius:99px; height:6px; overflow:hidden;">
+          <div id="backfill-bar" style="background:var(--color-text-primary); height:100%; width:0%; transition:width 0.3s;"></div>
+        </div>
+      </div>
+      <div class="timeline-loading" id="timeline-loading">
+        <div class="loading-spinner" style="margin:0 auto 10px;"></div>
+        AIが最新ニュースを調査中...
+      </div>
+      <div class="timeline-cards" id="timeline-cards"></div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    AIによる分析は補助的なものであり、完全性・正確性を保証するものではありません。<br>
+    最終的な判断はご自身の確認と責任のもとで行ってください。
+  </div>
+
+  </div><!-- /mode-article -->
+
+  <!-- 真偽検証モード -->
+  <div id="mode-factcheck" style="display:none;">
+
+    <div class="trivia-card" style="margin-bottom:1.5rem;">
+      <i class="ti ti-bulb trivia-icon"></i>
+      <div>
+        <div class="trivia-label">💡 今日のデマ・都市伝説</div>
+        <div id="dema-today-text" style="font-size:13px; color:var(--color-text-primary); line-height:1.6;"></div>
+        <div id="dema-today-verdict" style="margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <div class="factcheck-input-area">
+      <div style="font-size:14px; font-weight:600; margin-bottom:10px;">うわさ・デマを自由に検証</div>
+      <textarea class="factcheck-input" id="factcheck-input" placeholder="例：人間は脳の10%しか使っていない&#10;例：血液型と性格は関係がある&#10;例：コーヒーを飲むと背が伸びなくなる"></textarea>
+      <button class="btn-check" id="factcheck-btn" onclick="runFactCheck()" style="width:100%; justify-content:center;">
+        <i class="ti ti-search"></i> 真偽を検証する
+      </button>
+    </div>
+
+    <div class="verdict-card" id="verdict-card">
+      <div id="verdict-badge-area"></div>
+      <div class="verdict-summary" id="verdict-summary"></div>
+      <div class="verdict-detail" id="verdict-detail"></div>
+      <div class="verdict-why" id="verdict-why"></div>
+    </div>
+
+    <div class="loading" id="factcheck-loading">
+      <div class="loading-spinner"></div>
+      <p>AIが検証中です...</p>
+    </div>
+
+    <div class="dema-section">
+      <div class="dema-section-title"><i class="ti ti-list"></i> よくある誤解・都市伝説一覧</div>
+      <div class="dema-categories" id="dema-categories"></div>
+      <div class="dema-list" id="dema-list"></div>
+    </div>
+
+  </div><!-- /mode-factcheck -->
+
+  </div><!-- /page-main -->
+
+  <div class="static-page" id="page-howto">
+    <a href="#" class="back-link" onclick="showPage('main'); return false;"><i class="ti ti-arrow-left"></i> トップに戻る</a>
+    <h2>VerityMeterの使い方</h2>
+    <p>VerityMeterは、ニュース記事のURLを入力するだけで、AIがその記事内容の信憑性を診断するツールです。</p>
+
+    <div class="step-card">
+      <div class="step-num">1</div>
+      <div>診断したい記事のURL（https://から始まるリンク）をコピーします。</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">2</div>
+      <div>トップページの入力欄に貼り付け、「診断する」ボタンを押します。</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">3</div>
+      <div>数十秒ほどでAIが記事内容を分析し、信憑性スコア（0〜100）と詳細な評価が表示されます。</div>
+    </div>
+
+    <h2>スコアの見方</h2>
+    <ul>
+      <li><strong>80〜100：信憑性が高い</strong> ー 根拠が明確で、一次情報や複数ソースに基づいている</li>
+      <li><strong>65〜79：概ね信頼できる</strong> ー 大きな問題はないが一部確認不足な点がある</li>
+      <li><strong>45〜64：要注意・確認推奨</strong> ー 事実と憶測が混在している</li>
+      <li><strong>0〜44：信憑性が低い</strong> ー 根拠が薄い、誇張・扇動的な表現が目立つ</li>
+    </ul>
+
+    <h2>「媒体の傾向」について</h2>
+    <p>診断結果の下部には、参考情報として掲載メディアの一般的な傾向も表示されます。これはあくまで補助的な情報で、スコアの主な判断材料は「記事内容そのもの」です。同じメディアでも記事によって信憑性は変わるため、媒体名だけで信頼性を判断しないようご注意ください。</p>
+  </div>
+
+  <div class="static-page" id="page-disclaimer">
+    <a href="#" class="back-link" onclick="showPage('main'); return false;"><i class="ti ti-arrow-left"></i> トップに戻る</a>
+    <h2>免責事項</h2>
+    <p>VerityMeter（以下「当サイト」）は、AI（人工知能）を用いて記事の信憑性を分析し、参考情報として提供するものです。ご利用にあたっては、以下の点をご理解いただいたうえでご利用ください。</p>
+
+    <h2>診断結果の性質について</h2>
+    <ul>
+      <li>当サイトが提供するスコアおよび分析結果は、AIによる自動分析に基づくものであり、内容の正確性・完全性・最新性を保証するものではありません。</li>
+      <li>AIの分析には限界があり、判断を誤る可能性があります。特に、最新の出来事や専門的な内容については、誤った評価をする場合があります。</li>
+      <li>診断結果は断定的な「真偽の判定」ではなく、利用者ご自身が情報を吟味するための参考材料としてご活用ください。</li>
+    </ul>
+
+    <h2>利用上の注意</h2>
+    <ul>
+      <li>当サイトの診断結果を理由として生じたいかなる損害についても、運営者は責任を負いかねます。</li>
+      <li>記事の最終的な真偽判断は、必ず利用者ご自身の責任において行ってください。</li>
+      <li>当サイトは特定の媒体・個人・団体を誹謗中傷する意図はありません。診断結果に関するご指摘・ご意見がある場合はお問い合わせください。</li>
+    </ul>
+
+    <h2>著作権について</h2>
+    <p>診断対象となる記事の著作権は、各記事の著作者・掲載媒体に帰属します。当サイトは記事本文を複製・転載するものではなく、URLの内容を分析した要約・評価のみを表示します。</p>
+  </div>
+
+</main>
+
+<footer>
+  <p>VerityMeter — AIによる情報の目利き</p>
+  <p style="margin-top:8px;">
+    <a href="https://ko-fi.com/veritymeter" target="_blank" rel="noopener noreferrer" style="color:var(--color-text-tertiary); text-decoration:none;">
+      ☕ Ko-fiで応援する
+    </a>
+  </p>
+  <p style="margin-top:6px;">© 2026 VerityMeter</p>
+</footer>
+
+<script>
+function showPage(page) {
+  document.getElementById('page-main').style.display = (page === 'main') ? 'block' : 'none';
+  document.getElementById('page-howto').style.display = (page === 'howto') ? 'block' : 'none';
+  document.getElementById('page-disclaimer').style.display = (page === 'disclaimer') ? 'block' : 'none';
+  if (page === 'main') initTimeline();
+  window.scrollTo(0, 0);
+}
+
+// ===== モード切り替え =====
+let currentMode = 'article';
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('mode-article').style.display = mode === 'article' ? 'block' : 'none';
+  document.getElementById('mode-factcheck').style.display = mode === 'factcheck' ? 'block' : 'none';
+  document.getElementById('mode-btn-article').classList.toggle('active', mode === 'article');
+  document.getElementById('mode-btn-factcheck').classList.toggle('active', mode === 'factcheck');
+  if (mode === 'factcheck') initFactCheck();
+  if (mode === 'article') initTimeline();
+  window.scrollTo(0, 0);
+}
+
+// ===== 真偽検証 =====
+const DEMA_LIST = [
+  { claim: "人間は脳の10%しか使っていない", verdict: "false", verdict_label: "誤り", summary: "科学的に否定されている都市伝説", detail: "脳画像研究により、私たちは日常的に脳のほぼすべての領域を使用していることが確認されています。特定の作業で一部の領域が活発になりますが、「90%が眠っている」という事実はありません。", why_believed: "「隠れた能力を引き出せる」という期待感に訴えるため信じられやすい", category: "科学" },
+  { claim: "血液型と性格は関係がある", verdict: "false", verdict_label: "誤り", summary: "科学的根拠がない日本独自の俗信", detail: "大規模な心理学研究において、血液型と性格の間に統計的に有意な相関関係は見つかっていません。バーナム効果（誰にでも当てはまる曖昧な記述を自分のことだと感じる心理）が信じさせる原因の一つです。", why_believed: "バーナム効果により、曖昧な性格描写が自分に当てはまると感じるため", category: "科学" },
+  { claim: "コーヒーを飲むと背が伸びなくなる", verdict: "false", verdict_label: "誤り", summary: "科学的根拠のない俗説", detail: "コーヒーに含まれるカフェインが成長を妨げるという科学的証拠はありません。身長は主に遺伝と栄養状態によって決まります。ただし、子どもの睡眠を妨げる可能性はあり、間接的な影響を懸念する声もあります。", why_believed: "子どもへの注意として広まり、繰り返し聞くことで真実だと感じるため", category: "健康" },
+  { claim: "風邪は寒さからかかる", verdict: "partial", verdict_label: "一部誤り", summary: "ウイルスが原因だが寒さも間接的に影響", detail: "風邪の直接原因はウイルスへの感染であり、寒さ自体は風邪を引き起こしません。ただし、寒い環境では免疫機能が低下したり、乾燥した空気でウイルスが生存しやすくなったりするため、間接的な影響はあります。", why_believed: "寒い季節に風邪が増えるという経験則から、因果関係があると思われるため", category: "健康" },
+  { claim: "ガムを飲み込むと胃に7年間残る", verdict: "false", verdict_label: "誤り", summary: "消化されにくいが排泄される", detail: "ガムベースは消化されにくいですが、腸の蠕動運動によって数日以内に体外に排泄されます。7年間胃に残るという事実はなく、大量に飲み込まない限り健康上の問題も生じません。", why_believed: "子どもへの注意として語り継がれ、怖い話として印象に残りやすいため", category: "健康" },
+  { claim: "人は死後も爪と髪が伸び続ける", verdict: "false", verdict_label: "誤り", summary: "乾燥による皮膚収縮が原因の錯覚", detail: "死後、細胞分裂が停止するため爪や髪が実際に伸びることはありません。死後に皮膚が乾燥・収縮することで、爪や髪の根元が露出し、伸びたように見える錯覚が生じます。", why_believed: "不気味さと視覚的な印象が記憶に残りやすく、検証されにくいため", category: "科学" },
+  { claim: "落雷は同じ場所に2度落ちない", verdict: "false", verdict_label: "誤り", summary: "高い建物や突起物には何度も落ちる", detail: "エンパイアステートビルなどの高層建築物には年間20〜100回の落雷があります。雷は最も電気が流れやすい経路を選ぶため、高い場所や突起物に繰り返し落ちます。", why_believed: "一度不運なことが起きた後は大丈夫という楽観的な思考から広まった", category: "科学" },
+  { claim: "人間は1日8杯の水を飲まなければならない", verdict: "partial", verdict_label: "一部誤り", summary: "個人差が大きく一律の基準は根拠が薄い", detail: "必要な水分量は体重・活動量・気候・食事内容によって大きく異なります。食事からも水分は摂取できるため、純粋に水を8杯飲む必要はありません。ただし十分な水分補給が重要なのは事実です。", why_believed: "シンプルで覚えやすいため、医学的な推奨として広まった", category: "健康" },
+  { claim: "砂糖は子どもを興奮させる", verdict: "false", verdict_label: "誤り", summary: "二重盲検試験で否定されている", detail: "複数の研究で、砂糖摂取と子どもの行動変化の間に因果関係は確認されていません。親が「砂糖を食べた」と思い込んでいる場合に子どもが興奮して見えるという、期待効果（プラセボ効果の逆）が原因と考えられています。", why_believed: "イベント時など子どもが興奮する場面とお菓子が一致することが多いため", category: "健康" },
+  { claim: "金魚の記憶は3秒しかない", verdict: "false", verdict_label: "誤り", summary: "数ヶ月以上の記憶を持つことが確認されている", detail: "金魚は条件付け学習により数ヶ月以上記憶を保持できることが実験で確認されています。えさをもらう時間を覚えたり、迷路を学習したりする能力も示されています。", why_believed: "シンプルで面白い話として広まり、検証されにくいため", category: "科学" },
+  { claim: "暗いところで本を読むと目が悪くなる", verdict: "false", verdict_label: "誤り", summary: "目が疲れやすくなるが視力低下の原因にはならない", detail: "暗い場所での読書は目の筋肉を酷使するため疲れやすくなりますが、永続的な視力低下を引き起こすという科学的証拠はありません。ただし目の疲労を防ぐために適切な照明で読書することは推奨されます。", why_believed: "目が疲れるという実感と、親からの注意が組み合わさって信じられるため", category: "健康" },
+  { claim: "蚊は刺した血を吸っている", verdict: "partial", verdict_label: "一部誤り", summary: "正確には「血を吸う」より「採血する」に近い", detail: "蚊が「吸う」のは産卵のためのタンパク質を得るメスのみです。蚊は実際には口吻で皮膚を刺し、毛細血管を探して吸血します。また刺すのはメスだけで、オスは花の蜜を食べます。", why_believed: "日常的な表現として定着しており、詳細を知る機会がないため", category: "科学" },
+  { claim: "ナポレオンは非常に背が低かった", verdict: "partial", verdict_label: "一部誤り", summary: "当時の平均身長並みで低くはなかった", detail: "ナポレオンの身長は約169cmで、当時のフランス人男性の平均身長（約166cm）と比べて低くはありませんでした。「低い」というイメージはイギリスのプロパガンダや、フランスとイギリスの度量衡の違いによる誤換算が原因とされています。", why_believed: "イギリスの風刺漫画での描写が広まり、繰り返されることで定着したため", category: "歴史" },
+  { claim: "コロンブスはアメリカを発見した", verdict: "partial", verdict_label: "一部誤り", summary: "先住民がすでに住んでおり「発見」は不正確", detail: "コロンブスが1492年に到達した時、アメリカ大陸にはすでに多くの先住民が何千年も前から生活していました。また北欧のヴァイキングはコロンブスより先に北アメリカに到達していたとも言われています。「発見」という表現は現在では欧州人による「接触」と表現されることが多いです。", why_believed: "長年の教科書記述と、ヨーロッパ中心史観が影響しているため", category: "歴史" },
+  { claim: "人間の舌には味を感じる部位が決まっている（舌味覚マップ）", verdict: "false", verdict_label: "誤り", summary: "舌全体で全ての味を感じられる", detail: "「甘味は舌先、苦味は奥」という舌味覚マップは誤りで、現代の研究では舌全体の味蕾で全ての基本的な味（甘・塩・酸・苦・うまみ）を感じられることが確認されています。このマップは1900年代初頭のドイツ語論文の誤訳が起源とされています。", why_believed: "学校教育で長年教えられ、図解されてきたため定着してしまった", category: "科学" },
+];
+
+let activeDemaCategory = 'すべて';
+
+function initFactCheck() {
+  showDemaTodayCard();
+  renderDemaCategories();
+  renderDemaList();
+}
+
+function showDemaTodayCard() {
+  const today = new Date();
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const idx = (seed + 7) % DEMA_LIST.length; // 豆知識と違う番号にする
+  const dema = DEMA_LIST[idx];
+  document.getElementById('dema-today-text').textContent = `「${dema.claim}」は本当？`;
+  const verdictEl = document.getElementById('dema-today-verdict');
+  const cls = `verdict-${dema.verdict}`;
+  verdictEl.innerHTML = `<span class="verdict-badge ${cls}" style="font-size:13px; padding:4px 12px;">${dema.verdict_label}</span> <span style="font-size:13px; color:var(--color-text-secondary);">${dema.summary}</span>`;
+}
+
+function renderDemaCategories() {
+  const categories = ['すべて', ...new Set(DEMA_LIST.map(d => d.category))];
+  const el = document.getElementById('dema-categories');
+  el.innerHTML = '';
+  categories.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'dema-category-btn' + (cat === activeDemaCategory ? ' active' : '');
+    btn.textContent = cat;
+    btn.onclick = () => { activeDemaCategory = cat; renderDemaCategories(); renderDemaList(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderDemaList() {
+  const list = activeDemaCategory === 'すべて' ? DEMA_LIST : DEMA_LIST.filter(d => d.category === activeDemaCategory);
+  const el = document.getElementById('dema-list');
+  el.innerHTML = '';
+  list.forEach(dema => {
+    const div = document.createElement('div');
+    div.className = 'dema-item';
+    div.innerHTML = `
+      <div class="dema-verdict-dot dot-${dema.verdict}"></div>
+      <div class="dema-claim">「${dema.claim}」</div>
+      <div class="dema-category-tag">${dema.category}</div>
+    `;
+    div.onclick = () => showDemaDetail(dema);
+    el.appendChild(div);
+  });
+}
+
+function showDemaDetail(dema) {
+  document.getElementById('factcheck-input').value = dema.claim;
+  renderVerdictCard(dema);
+  window.scrollTo(0, 0);
+}
+
+async function runFactCheck() {
+  const claim = document.getElementById('factcheck-input').value.trim();
+  if (!claim) return;
+
+  // 事前登録リストに一致するものがあれば即表示
+  const found = DEMA_LIST.find(d => d.claim === claim || claim.includes(d.claim));
+  if (found) {
+    renderVerdictCard(found);
+    return;
+  }
+
+  // なければAIに問い合わせ
+  const btn = document.getElementById('factcheck-btn');
+  const loading = document.getElementById('factcheck-loading');
+  btn.disabled = true;
+  loading.style.display = 'block';
+  document.getElementById('verdict-card').style.display = 'none';
 
   try {
-    const body = await request.json();
-    const { claim } = body;
-
-    if (!claim || claim.trim().length === 0) {
-      return new Response(JSON.stringify({ error: "検証する内容を入力してください" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-      });
-    }
-
-    const apiKey = env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "APIキーが設定されていません" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-      });
-    }
-
-    const systemPrompt = `情報検証AIです。入力されたうわさ・デマ・都市伝説の真偽を検証しJSONのみ返答。最初の文字は必ず「{」。
-
-JSON形式：
-{"verdict":"true/false/partial/unknown","verdict_label":"本当/誤り/一部誤り/不明","summary":"検証結果の要約(60字以内)","detail":"詳しい説明(120字以内)","why_believed":"なぜ信じられやすいか(60字以内)","category":"健康/科学/歴史/社会/食べ物/その他"}
-
-verdict基準：
-- true：科学的・歴史的に正しい
-- false：明確に誤り・デマ
-- partial：一部は正しいが誤解を含む
-- unknown：現時点では断定できない`;
-
-    const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
-        system: systemPrompt,
-        messages: [{ role: "user", content: `検証：「${claim.trim()}」` }],
-      }),
+    const res = await fetch('/api/fact-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claim })
     });
-
-    if (!apiRes.ok) {
-      const errText = await apiRes.text();
-      return new Response(JSON.stringify({ error: "AI検証サービスでエラーが発生しました" }), {
-        status: 502,
-        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-      });
-    }
-
-    const data = await apiRes.json();
-    const fullText = (data.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n");
-
-    const braceIdx = fullText.indexOf('{');
-    let json;
-    try {
-      if (braceIdx >= 0) {
-        let depth = 0, endIdx = -1;
-        for (let i = braceIdx; i < fullText.length; i++) {
-          if (fullText[i] === '{') depth++;
-          else if (fullText[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-        }
-        json = JSON.parse(fullText.slice(braceIdx, endIdx + 1));
-      } else throw new Error("JSON not found");
-    } catch (e) {
-      return new Response(JSON.stringify({ error: "検証結果の解析に失敗しました" }), {
-        status: 502,
-        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-      });
-    }
-
-    return new Response(JSON.stringify(json), {
-      status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-    });
-
-  } catch (e) {
-    return new Response(JSON.stringify({ error: "サーバーエラーが発生しました" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders },
-    });
+    loading.style.display = 'none';
+    btn.disabled = false;
+    if (!res.ok) { alert('検証に失敗しました。しばらくしてから再度お試しください。'); return; }
+    const json = await res.json();
+    renderVerdictCard(json);
+  } catch(e) {
+    loading.style.display = 'none';
+    btn.disabled = false;
+    alert('通信エラーが発生しました。');
   }
 }
 
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
+function renderVerdictCard(d) {
+  const icons = { true: '✅', false: '❌', partial: '⚠️', unknown: '❓' };
+  document.getElementById('verdict-badge-area').innerHTML =
+    `<div class="verdict-badge verdict-${d.verdict}">${icons[d.verdict] || '❓'} ${d.verdict_label}</div>`;
+  document.getElementById('verdict-summary').textContent = d.summary || '';
+  document.getElementById('verdict-detail').textContent = d.detail || '';
+  document.getElementById('verdict-why').textContent = d.why_believed || '';
+  const card = document.getElementById('verdict-card');
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ===== 時系列マップ =====
+const TIMELINE_THEMES = [
+  {
+    id: "us-iran",
+    name: "米国・イラン情勢",
+    desc: "双方の主張と外交の変化を追跡",
+    keywords: "米国 イラン 外交 制裁 核合意 軍事",
+    granularity: "month",   // 月単位
+    startYear: 2025, startMonth: 2,  // 2025年2月から
+  },
+  {
+    id: "bear",
+    name: "クマの出没情報",
+    desc: "全国のクマ出没・被害状況を追跡",
+    keywords: "クマ 出没 被害 目撃 注意 捕獲 環境省",
+    granularity: "year",    // 年単位
+    startYear: 2022,
+  },
+  {
+    id: "naphtha",
+    name: "ナフサ不足問題",
+    desc: "石油化学原料の需給変化を追跡",
+    keywords: "ナフサ 不足 石油化学 供給 価格 エチレン ホルムズ海峡",
+    granularity: "month",   // 月単位
+    startYear: 2026, startMonth: 2,  // 2026年2月から
+  },
+];
+
+// 期間ラベルを生成する関数（sortKeyで確実な数値ソートを実現）
+function generatePeriods(theme) {
+  const periods = [];
+  const now = new Date();
+
+  if (theme.granularity === "year") {
+    for (let y = theme.startYear; y <= now.getFullYear(); y++) {
+      periods.push({ label: `${y}年`, year: y, sortKey: y * 10000 });
+    }
+  } else if (theme.granularity === "month") {
+    let y = theme.startYear;
+    let m = theme.startMonth || 1;
+    while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+      periods.push({ label: `${y}年${m}月`, year: y, month: m, sortKey: y * 10000 + m * 100 });
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
+  } else if (theme.granularity === "quarter") {
+    let y = theme.startYear;
+    let q = theme.startQuarter || 1;
+    while (y < now.getFullYear() || (y === now.getFullYear() && q <= Math.ceil((now.getMonth() + 1) / 3))) {
+      periods.push({ label: `${y}年Q${q}`, year: y, quarter: q, sortKey: y * 10000 + q * 100 });
+      q++;
+      if (q > 4) { q = 1; y++; }
+    }
+  }
+  return periods;
+}
+
+// ラベル文字列からsortKeyを逆引きする関数
+function getSortKeyForLabel(label, theme) {
+  const periods = generatePeriods(theme);
+  const found = periods.find(p => p.label === label);
+  return found ? found.sortKey : 0;
+}
+
+let activeTheme = null;
+let isBackfilling = false; // バックフィル実行中フラグ
+
+// localStorageから復元、なければ空オブジェクト
+const STORAGE_KEY = 'veritymeter_timeline_v1';
+let timelineData = {};
+try {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) timelineData = JSON.parse(saved);
+} catch(e) {
+  timelineData = {};
+}
+
+function saveTimelineData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(timelineData));
+  } catch(e) {
+    console.warn('localStorage保存失敗:', e);
+  }
+}
+
+function resetTimelineData() {
+  if (!confirm('保存されたすべての時系列データを削除しますか？')) return;
+  timelineData = {};
+  localStorage.removeItem(STORAGE_KEY);
+  if (activeTheme) renderTimelineCards(activeTheme.id);
+  alert('データをリセットしました。');
+}
+
+function initTimeline() {
+  const grid = document.getElementById('theme-grid');
+  grid.innerHTML = '';
+  TIMELINE_THEMES.forEach(theme => {
+    const card = document.createElement('div');
+    card.className = 'theme-card' + (activeTheme && activeTheme.id === theme.id ? ' active' : '');
+    card.innerHTML = `<div class="theme-name">${theme.name}</div><div class="theme-desc">${theme.desc}</div>`;
+    card.onclick = () => {
+      if (isBackfilling) {
+        alert('過去データの取得中はテーマを切り替えられません。完了をお待ちください。');
+        return;
+      }
+      selectTheme(theme);
+    };
+    grid.appendChild(card);
+  });
+  if (activeTheme) {
+    document.getElementById('timeline-view').style.display = 'block';
+    renderTimelineCards(activeTheme.id);
+  }
+}
+
+function selectTheme(theme) {
+  activeTheme = theme;
+  document.getElementById('timeline-title').textContent = theme.name;
+  document.getElementById('timeline-view').style.display = 'block';
+  // バックフィル進捗をリセット
+  document.getElementById('backfill-progress').style.display = 'none';
+  document.getElementById('btn-backfill').disabled = false;
+  document.getElementById('btn-update').disabled = false;
+  initTimeline();
+  // そのテーマのデータのみ表示（他テーマのデータは含まない）
+  renderTimelineCards(theme.id);
+}
+
+function renderTimelineCards(themeId) {
+  const container = document.getElementById('timeline-cards');
+  const data = timelineData[themeId] || [];
+  container.innerHTML = '';
+
+  if (data.length === 0) {
+    container.innerHTML = '<div class="timeline-empty">「最新情報を取得」ボタンを押すと、AIがこのテーマの最新ニュースを調査します。</div>';
+    return;
+  }
+
+  data.slice().reverse().forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    const scoreColor = item.score >= 70 ? '#3B6D11' : item.score >= 45 ? '#BA7517' : '#A32D2D';
+    card.innerHTML = `
+      <div class="timeline-date-col">
+        <div class="timeline-date">${item.date}</div>
+      </div>
+      <div style="position:relative; flex-shrink:0; width:1px; background:var(--color-border); margin:0 12px;">
+        <div class="timeline-dot"></div>
+      </div>
+      <div class="timeline-content">
+        <div class="timeline-source">${item.source || 'AI調査'}</div>
+        <a class="timeline-headline" href="${item.url || '#'}" target="_blank" rel="noopener noreferrer">${item.headline}</a>
+        <div class="timeline-summary">${item.summary}</div>
+        ${item.diff ? `<div class="timeline-diff">${item.diff}</div>` : ''}
+      </div>
+    `;
+    container.appendChild(card);
   });
 }
+
+async function startBackfill() {
+  if (!activeTheme) return;
+
+  const periods = generatePeriods(activeTheme);
+  const existing = (timelineData[activeTheme.id] || []).map(d => d.date);
+  const remaining = periods.filter(p => !existing.includes(p.label));
+
+  if (remaining.length === 0) {
+    alert('すべての期間のデータが既に読み込まれています。');
+    return;
+  }
+
+  const btnBackfill = document.getElementById('btn-backfill');
+  const btnUpdate = document.getElementById('btn-update');
+  const progress = document.getElementById('backfill-progress');
+  const status = document.getElementById('backfill-status');
+  const bar = document.getElementById('backfill-bar');
+
+  btnBackfill.disabled = true;
+  btnUpdate.disabled = true;
+  isBackfilling = true;
+  progress.style.display = 'block';
+
+  for (let i = 0; i < remaining.length; i++) {
+    const period = remaining[i];
+    status.textContent = `${period.label}を調査中... (${i + 1}/${remaining.length})`;
+    bar.style.width = `${Math.round((i / remaining.length) * 100)}%`;
+
+    try {
+      const prevData = timelineData[activeTheme.id] || [];
+      const res = await fetch('/api/timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          themeId: activeTheme.id,
+          themeName: activeTheme.name,
+          keywords: activeTheme.keywords,
+          previousData: prevData,
+          period: period,
+        })
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.entry) {
+          const currentThemeId = activeTheme.id;
+          const currentTheme = activeTheme;
+          if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
+          // 同じ期間のデータが既にあれば上書き、なければ追加
+          const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+          // sortKeyを付与してから保存
+          const entry = { ...json.entry, sortKey: getSortKeyForLabel(json.entry.date, currentTheme) };
+          if (existingIdx >= 0) {
+            timelineData[currentThemeId][existingIdx] = entry;
+          } else {
+            timelineData[currentThemeId].push(entry);
+          }
+          // sortKeyで数値ソート（日本語文字列ソートより確実）
+          timelineData[currentThemeId].sort((a, b) => (a.sortKey || 0) - (b.sortKey || 0));
+          saveTimelineData();
+          renderTimelineCards(currentThemeId);
+        }
+      }
+    } catch(e) {
+      console.error(`Error fetching ${period.label}:`, e);
+    }
+
+    // 次の期間まで待機（レート制限対策）
+    if (i < remaining.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+    }
+  }
+
+  bar.style.width = '100%';
+  status.textContent = `完了しました（${remaining.length}期間）`;
+  setTimeout(() => { progress.style.display = 'none'; }, 3000);
+  btnBackfill.disabled = false;
+  btnUpdate.disabled = false;
+  isBackfilling = false;
+}
+
+async function updateTimeline() {
+  if (!activeTheme) return;
+  const btn = document.getElementById('btn-update');
+  const loading = document.getElementById('timeline-loading');
+  btn.disabled = true;
+  loading.style.display = 'block';
+
+  try {
+    const res = await fetch('/api/timeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        themeId: activeTheme.id,
+        themeName: activeTheme.name,
+        keywords: activeTheme.keywords,
+        previousData: timelineData[activeTheme.id] || []
+      })
+    });
+
+    loading.style.display = 'none';
+    btn.disabled = false;
+
+    if (!res.ok) {
+      alert('情報の取得に失敗しました。しばらくしてから再度お試しください。');
+      return;
+    }
+
+    const json = await res.json();
+    if (json.entry) {
+      const currentThemeId = activeTheme.id;
+      const currentTheme = activeTheme;
+      if (!timelineData[currentThemeId]) timelineData[currentThemeId] = [];
+      const existingIdx = timelineData[currentThemeId].findIndex(d => d.date === json.entry.date);
+      const entry = { ...json.entry, sortKey: getSortKeyForLabel(json.entry.date, currentTheme) || 99999999 };
+      if (existingIdx >= 0) {
+        timelineData[currentThemeId][existingIdx] = entry;
+      } else {
+        timelineData[currentThemeId].push(entry);
+      }
+      timelineData[currentThemeId].sort((a, b) => (a.sortKey || 0) - (b.sortKey || 0));
+      saveTimelineData();
+      renderTimelineCards(currentThemeId);
+    }
+  } catch(e) {
+    loading.style.display = 'none';
+    btn.disabled = false;
+    alert('通信エラーが発生しました。');
+  }
+}
+
+// ===== 情報リテラシー豆知識 =====
+const TRIVIA_LIST = [
+  "同じ情報を何度も見ると、人は真実だと思いやすくなります。これを「真実性の錯覚」と呼びます。",
+  "見出しだけ読んで本文を読まないと、書き手の意図通りに情報を受け取ってしまうことがあります。",
+  "感情を強く揺さぶる記事ほど、内容を批判的に読むことが難しくなります。",
+  "「専門家によると」という表現だけでは、その専門家が誰なのかを確認することが大切です。",
+  "自分が信じたいことを支持する情報を無意識に集めてしまう傾向を「確証バイアス」と呼びます。",
+  "数字や統計は、母数や調査方法によって全く異なる印象を与えることがあります。",
+  "「〜と言われている」「〜らしい」という表現は、出典が不明確なサインです。",
+  "写真や動画は文脈を変えることで、全く異なる意味を持たせることができます。",
+  "SNSでシェアされやすい情報は、必ずしも信頼性が高いわけではありません。",
+  "反対意見を意図的に省略することで、一方的な印象を与える記事は多くあります。",
+  "「緊急」「衝撃」「驚愕」などの煽り言葉は、冷静な判断を妨げる効果があります。",
+  "情報の一次情報源（政府発表・論文・当事者の発言）を直接確認する習慣が重要です。",
+  "人は自分のグループ（国・政党・チームなど）に有利な情報を信じやすい傾向があります。",
+  "タイトルと本文の内容が一致しない「クリックベイト」に注意が必要です。",
+  "報道機関も完全ではなく、誤報や訂正が発生することがあります。複数の情報源を参照しましょう。",
+  "AIが生成した文章や画像は、見た目だけでは本物と区別がつかないことがあります。",
+  "「みんなが言っている」という表現は、実際の根拠がない場合に使われやすい表現です。",
+  "感情的になっている時ほど、情報の真偽を冷静に判断することが難しくなります。",
+  "記事の公開日を確認しましょう。古い情報が最新情報のように拡散されることがあります。",
+  "出典のないグラフや統計は、作成者の意図に合わせて加工されている可能性があります。",
+];
+
+function showDailyTrivia() {
+  // 日付をシードにして「今日の豆知識」を決定（同じ日は同じ豆知識）
+  const today = new Date();
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const idx = seed % TRIVIA_LIST.length;
+  document.getElementById('trivia-text').textContent = TRIVIA_LIST[idx];
+}
+
+showDailyTrivia();
+let dailyNewsData = null;
+let activeMediaId = null;
+
+function scoreColor(score) {
+  if (score >= 70) return '#3B6D11';
+  if (score >= 45) return '#BA7517';
+  return '#A32D2D';
+}
+
+async function loadDailyNews() {
+  const loadingEl = document.getElementById('daily-loading');
+  const errorEl = document.getElementById('daily-error');
+  loadingEl.style.display = 'block';
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/daily-news');
+    const json = await res.json();
+
+    loadingEl.style.display = 'none';
+
+    if (!res.ok) {
+      errorEl.textContent = json.error || '本日のニュースを取得できませんでした。';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    dailyNewsData = json;
+    renderMediaTabs();
+    if (json.media && json.media.length > 0) {
+      activeMediaId = json.media[0].mediaId;
+      renderNewsList(activeMediaId);
+    }
+
+    const dateEl = document.getElementById('daily-date');
+    if (json.date) dateEl.textContent = json.date + ' 更新';
+
+  } catch (e) {
+    loadingEl.style.display = 'none';
+    errorEl.textContent = '通信エラーが発生しました。';
+    errorEl.style.display = 'block';
+  }
+}
+
+function renderMediaTabs() {
+  const tabsEl = document.getElementById('media-tabs');
+  tabsEl.innerHTML = '';
+  (dailyNewsData.media || []).forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'media-tab' + (m.mediaId === activeMediaId ? ' active' : '');
+    btn.textContent = m.mediaName;
+    btn.onclick = () => {
+      activeMediaId = m.mediaId;
+      renderMediaTabs();
+      renderNewsList(activeMediaId);
+    };
+    tabsEl.appendChild(btn);
+  });
+}
+
+function renderNewsList(mediaId) {
+  const listEl = document.getElementById('news-list');
+  listEl.innerHTML = '';
+
+  const media = (dailyNewsData.media || []).find(m => m.mediaId === mediaId);
+  if (!media || !media.articles || media.articles.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'daily-empty';
+    empty.textContent = '本日はこのメディアの記事を取得できませんでした。';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  media.articles.slice(0, 3).forEach(a => {
+    const li = document.createElement('li');
+    li.className = 'news-item';
+    const score = Math.min(100, Math.max(0, a.score || 0));
+    li.innerHTML = `
+      <div class="news-score" style="background:${scoreColor(score)}">${score}</div>
+      <div class="news-body">
+        <a class="news-title" href="${a.url}" target="_blank" rel="noopener noreferrer">${a.title || '(タイトル不明)'}</a>
+        <div class="news-excerpt">${a.excerpt || ''}</div>
+        <div class="news-comment">${a.comment || ''}</div>
+      </div>
+    `;
+    listEl.appendChild(li);
+  });
+}
+
+// ページ読み込み時に本日のニュースを取得
+loadDailyNews();
+
+function fillExample(url) {
+  document.getElementById('url-input').value = url;
+  toggleClearBtn();
+}
+
+function toggleClearBtn() {
+  const input = document.getElementById('url-input');
+  const btn = document.getElementById('clear-btn');
+  if (input.value.length > 0) {
+    btn.classList.add('visible');
+  } else {
+    btn.classList.remove('visible');
+  }
+}
+
+function clearInput() {
+  const input = document.getElementById('url-input');
+  input.value = '';
+  toggleClearBtn();
+  input.focus();
+  // 結果やエラー表示も一緒にリセット
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('result').style.display = 'none';
+}
+
+function setMeter(score) {
+  const arc = document.getElementById('meter-arc');
+  const total = 141;
+  const filled = (score / 100) * total;
+  arc.setAttribute('stroke-dasharray', filled + ' ' + (total - filled));
+  let color;
+  if (score >= 70) color = '#3B6D11';
+  else if (score >= 45) color = '#BA7517';
+  else color = '#A32D2D';
+  arc.setAttribute('stroke', color);
+}
+
+function getVerdictTag(score) {
+  if (score >= 80) return {label: '高信頼', cls: 'tag-success'};
+  if (score >= 65) return {label: '概ね信頼', cls: 'tag-info'};
+  if (score >= 45) return {label: '要注意', cls: 'tag-warning'};
+  return {label: '低信頼', cls: 'tag-danger'};
+}
+
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  document.getElementById('error-msg').textContent = msg;
+  box.style.display = 'block';
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('check-btn').disabled = false;
+}
+
+const loadingMessages = ['記事を取得しています...', '文章を解析しています...', '情報源を確認しています...', '信憑性スコアを計算しています...'];
+let loadingTimer;
+
+function startLoadingMessages() {
+  let i = 0;
+  const el = document.getElementById('loading-msg');
+  el.textContent = loadingMessages[0];
+  loadingTimer = setInterval(() => {
+    i = (i + 1) % loadingMessages.length;
+    el.textContent = loadingMessages[i];
+  }, 2000);
+}
+
+async function runCheck() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { showError('URLを入力してください'); return; }
+  if (!url.startsWith('http')) { showError('正しいURLを入力してください（https://から始まるもの）'); return; }
+
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('result').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('check-btn').disabled = true;
+  startLoadingMessages();
+
+  try {
+    // 自サイトのサーバー側API（/api/check）を呼ぶ。APIキーはサーバー側にのみ保管されている。
+    const res = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+
+    clearInterval(loadingTimer);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('check-btn').disabled = false;
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      showError(json.error || 'エラーが発生しました');
+      return;
+    }
+
+    renderResult(json, url);
+
+  } catch(e) {
+    clearInterval(loadingTimer);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('check-btn').disabled = false;
+    showError('通信エラーが発生しました。インターネット接続を確認してください。');
+  }
+}
+
+function renderResult(d, url) {
+  // 深層分析のリセット
+  currentAnalysisUrl = url;
+  const btnDeep = document.getElementById('btn-deep');
+  btnDeep.style.display = 'flex';
+  btnDeep.disabled = false;
+  btnDeep.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+  document.getElementById('deep-result').style.display = 'none';
+  // 記事プレビュー
+  document.getElementById('preview-site').textContent = d.article_site || 'この記事';
+  document.getElementById('preview-title').textContent = d.article_title || '(タイトルを取得できませんでした)';
+  document.getElementById('preview-excerpt').textContent = d.article_excerpt || '';
+  document.getElementById('preview-url').textContent = url.length > 70 ? url.slice(0, 70) + '…' : url;
+
+  const score = Math.min(100, Math.max(0, d.score || 0));
+  document.getElementById('score-num').textContent = score;
+  setMeter(score);
+
+  document.getElementById('verdict-text').textContent = d.verdict || '';
+  document.getElementById('summary-text').textContent = d.summary || '';
+
+  const tagsArea = document.getElementById('tags-area');
+  tagsArea.innerHTML = '';
+  const mainTag = getVerdictTag(score);
+  const pill = document.createElement('span');
+  pill.className = 'tag ' + mainTag.cls;
+  pill.textContent = mainTag.label;
+  tagsArea.appendChild(pill);
+  (d.tags || []).forEach(t => {
+    const span = document.createElement('span');
+    span.className = 'tag tag-warning';
+    span.textContent = t;
+    tagsArea.appendChild(span);
+  });
+
+  const posList = document.getElementById('positives-list');
+  posList.innerHTML = '';
+  (d.positives || []).forEach(p => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="check-icon ti ti-circle-check" style="color:var(--color-success-text)"></span><span>' + p.text + '</span>';
+    posList.appendChild(li);
+  });
+  document.getElementById('positives-card').style.display = (d.positives && d.positives.length) ? '' : 'none';
+
+  const warnList = document.getElementById('warnings-list');
+  warnList.innerHTML = '';
+  (d.warnings || []).forEach(w => {
+    const li = document.createElement('li');
+    li.innerHTML = '<strong><i class="ti ti-alert-triangle"></i> ' + w.text + '</strong>' +
+      (w.excerpt ? '<div class="warning-excerpt">' + w.excerpt + '</div>' : '');
+    warnList.appendChild(li);
+  });
+  document.getElementById('warnings-card').style.display = (d.warnings && d.warnings.length) ? '' : 'none';
+
+  // メディア背景（補助情報）
+  const mb = d.media_background || {};
+  document.getElementById('media-type').textContent = mb.source_type || '不明';
+  document.getElementById('media-note').textContent = mb.media_note || '';
+  document.getElementById('media-card').style.display = (mb.source_type || mb.media_note) ? '' : 'none';
+
+  document.getElementById('verdict-full').textContent = d.verdict_full || '';
+  document.getElementById('result').style.display = 'block';
+}
+
+document.getElementById('url-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') runCheck();
+});
+
+// ===== 深層分析 =====
+let currentAnalysisUrl = '';
+
+async function runDeepAnalysis() {
+  if (!currentAnalysisUrl) return;
+  const btn = document.getElementById('btn-deep');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;margin:0;"></div> 心理学的観点から分析中...';
+
+  try {
+    const res = await fetch('/api/deep-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: currentAnalysisUrl })
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+      alert(json.error || '分析に失敗しました');
+      return;
+    }
+
+    renderDeepAnalysis(json);
+    btn.style.display = 'none';
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-brain"></i> 深層分析を見る（心理学・行動経済学的観点）';
+    alert('通信エラーが発生しました');
+  }
+}
+
+function renderDeepAnalysis(d) {
+  // 心理的バイアス
+  const biasesList = document.getElementById('deep-biases-list');
+  biasesList.innerHTML = '';
+  (d.psychological_biases || []).forEach(b => {
+    const severityClass = b.severity === 'high' ? 'severity-high' : b.severity === 'medium' ? 'severity-medium' : 'severity-low';
+    const severityLabel = b.severity === 'high' ? '高' : b.severity === 'medium' ? '中' : '低';
+    const div = document.createElement('div');
+    div.className = 'bias-item';
+    div.innerHTML = `
+      <div>
+        <div class="bias-name">${b.name} <span class="bias-severity ${severityClass}">${severityLabel}</span></div>
+        <div class="bias-desc">${b.description}</div>
+      </div>`;
+    biasesList.appendChild(div);
+  });
+
+  // 事実と意見の分離
+  const factGrid = document.getElementById('deep-fact-grid');
+  const fo = d.fact_opinion_separation || {};
+  factGrid.innerHTML = `
+    <div class="fact-box"><div class="fact-box-label">✅ 事実</div>${fo.facts || '—'}</div>
+    <div class="fact-box"><div class="fact-box-label">💬 意見・主張</div>${fo.opinions || '—'}</div>
+    <div class="fact-box"><div class="fact-box-label">❓ 検証困難</div>${fo.unverifiable || '—'}</div>
+  `;
+
+  // 感情操作
+  const em = d.emotional_manipulation || {};
+  const manipContent = document.getElementById('deep-manipulation-content');
+  if (em.detected) {
+    manipContent.innerHTML = `
+      <div style="margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;">
+        ${(em.techniques || []).map(t => `<span class="tag tag-warning">${t}</span>`).join('')}
+      </div>
+      <div style="font-size:13px; color:var(--color-text-secondary);">${em.examples || ''}</div>`;
+  } else {
+    manipContent.innerHTML = '<div style="font-size:13px; color:var(--color-text-secondary);">感情操作的な表現は検出されませんでした</div>';
+  }
+
+  // 欠けている視点
+  const mp = d.missing_perspectives || {};
+  const perspContent = document.getElementById('deep-perspectives-content');
+  if (mp.exists) {
+    perspContent.innerHTML = `
+      <div style="font-size:13px; margin-bottom:8px; color:var(--color-text-secondary);">${mp.description || ''}</div>
+      <div style="font-size:13px; background:var(--color-bg); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:10px;">
+        <strong>反対意見・別の見方：</strong>${mp.counterargument || ''}
+      </div>`;
+  } else {
+    perspContent.innerHTML = '<div style="font-size:13px; color:var(--color-text-secondary);">反対意見への言及があり、バランスが取れています</div>';
+  }
+
+  // 執筆者の意図
+  const intent = d.author_intent || {};
+  document.getElementById('deep-intent-grid').innerHTML = `
+    <div class="intent-box"><div class="intent-box-label">主な意図</div>${intent.primary_goal || '—'}</div>
+    <div class="intent-box"><div class="intent-box-label">喚起する感情</div>${intent.target_emotion || '—'}</div>
+    <div class="intent-box"><div class="intent-box-label">期待する行動</div>${intent.call_to_action || '—'}</div>
+  `;
+
+  // メディアリテラシーのポイント
+  const tipsList = document.getElementById('deep-tips-list');
+  tipsList.innerHTML = '';
+  (d.literacy_tips || []).forEach(tip => {
+    const div = document.createElement('div');
+    div.className = 'tip-item';
+    div.innerHTML = `<i class="ti ti-point-filled tip-icon"></i><span>${tip}</span>`;
+    tipsList.appendChild(div);
+  });
+
+  document.getElementById('deep-result').style.display = 'block';
+}
+</script>
+
+</body>
+</html>
