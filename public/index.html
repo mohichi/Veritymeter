@@ -992,14 +992,14 @@
       </button>
     </div>
 
-    <div class="verdict-card" id="verdict-card">
+    <div class="verdict-card" id="factcheck-verdict-card" style="display:none;">
       <div id="verdict-badge-area"></div>
       <div class="verdict-summary" id="verdict-summary"></div>
       <div class="verdict-detail" id="verdict-detail"></div>
       <div class="verdict-why" id="verdict-why"></div>
     </div>
 
-    <div class="loading" id="factcheck-loading">
+    <div class="loading" id="factcheck-loading" style="display:none;">
       <div class="loading-spinner"></div>
       <p>AIが検証中です...</p>
     </div>
@@ -1192,7 +1192,7 @@ async function runFactCheck() {
   const loading = document.getElementById('factcheck-loading');
   btn.disabled = true;
   loading.style.display = 'block';
-  document.getElementById('verdict-card').style.display = 'none';
+  document.getElementById('factcheck-verdict-card').style.display = 'none';
 
   try {
     const res = await fetch('/api/fact-check', {
@@ -1219,7 +1219,7 @@ function renderVerdictCard(d) {
   document.getElementById('verdict-summary').textContent = d.summary || '';
   document.getElementById('verdict-detail').textContent = d.detail || '';
   document.getElementById('verdict-why').textContent = d.why_believed || '';
-  const card = document.getElementById('verdict-card');
+  const card = document.getElementById('factcheck-verdict-card');
   card.style.display = 'block';
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
