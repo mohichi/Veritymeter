@@ -1849,6 +1849,8 @@ function renderNewsList(mediaId) {
 
 // ページ読み込み時に本日のニュースを取得
 loadDailyNews();
+// ページ読み込み時に時系列マップを初期化
+initTimeline();
 
 function fillExample(url) {
   document.getElementById('url-input').value = url;
